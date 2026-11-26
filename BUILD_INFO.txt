@@ -1,0 +1,4 @@
+Quotation Tool - lite release (generated, do not edit)
+Source: https://github.com/jonathandrennan/QuotationTool.git
+Commit: 4ecb0fc5bdb801ad479cd2a81144e479552f545d
+Built:  2026-11-26T12:46:46Z

@@ -1,0 +1,357 @@
+// engine_ib.js — Investment Bond (IB) projection engine. Pure functions of their inputs; no DOM.
+//
+// Follows the actuarial IB Illustration Generator workbook (v0.13, sheet Projections). Cell and column
+// references in the comments (e.g. Projections AX:BB, Parameters col F) point to that workbook.
+// The IB shares the ARF fund range, 6% growth cap and milestone-year convention, so it reuses
+// arfBlendedMetrics, arfMonthlyDecrementRate, arfSolveIRR, ARF_MILESTONES and ARF_FUNDS from engine_arf.js.
+//
+// Two features have no ARF or PRSA equivalent:
+//
+//  1. Irish exit tax with 8-year deemed disposal. The workbook keeps separate single (SP) and regular (RP)
+//     contribution books, but they always share the same growth and charge rates, so the combined fund value
+//     does not depend on how tax is split between them. The engine therefore tracks one combined fund, plus
+//     an SP-only shadow pool (fundSP) used for the exit charge, which applies to the SP-sourced value only.
+//  2. The government levy (1% of every contribution) and the tiered bonus commission on large single
+//     contributions, paid as extra initial commission (see IB_TIERED_BONUS in ib_data.js).
+//
+// Load after ib_data.js, arf_data.js, quote_common.js and engine_arf.js.
+
+// inp = {
+//   dobStr, startStr        'YYYY-MM-DD'
+//   code                    key in IB_CODES
+//   policyholderType        'individual' | 'corporate' | 'exempt'
+//   contribution            single contribution (0, or >= IB_MIN_SP)
+//   rp, freq, esc           regular contribution per payment, 'monthly'|'quarterly'|'annual', escalation % pa
+//   diyAllocs, diyGmab      { fundId: percent }, { fundId: bool }
+//   incomeType              'none' | 'custom_amount' | 'custom_pct'
+//   incomeValue             € p.a. (custom_amount) or % of fund p.a. (custom_pct)
+//   incomeStartAge          integer age
+//   incomeEscalationPct     percent p.a. (custom_amount only)
+//   specialDeal             null or decimal: company-funded uplift on the standard initial commission
+//   spUpOverride            null or decimal
+//   rateOverride            null or decimal
+// }
+
+// Base initial commission: standard rate plus any special deal (Parameters col F, "SP Upfront Special
+// Deal") plus the tiered bonus for a large single contribution. Both extras are paid by the company,
+// so they don't change the allocation.
+function ibBaseSpUp(inp) {
+  return IB_CODES[inp.code].spUp + (inp.specialDeal || 0) + ibTieredBonus(inp.contribution || 0);
+}
+function ibSpUpRate(inp) {
+  return inp.spUpOverride != null ? inp.spUpOverride : ibBaseSpUp(inp);
+}
+// Lowest and highest initial commission the adviser can set: the code's range (IB_SP_COMM_RANGE)
+// shifted up by the company-paid extras (special deal + tiered bonus), so they always sit on top and
+// the allocation stays inside the range the spec allows.
+function ibSpCommLimits(inp) {
+  var range = IB_SP_COMM_RANGE[inp.code], extra = (inp.specialDeal || 0) + ibTieredBonus(inp.contribution || 0);
+  return { min: range[0] + extra, max: range[1] + extra };
+}
+function ibDefaultRate(inp) { return Math.min(arfBlendedMetrics(inp).gross, IB_MAX_RATE); }
+
+// Allocation rate applied to the single contribution: 100% +/- any manual commission change
+// against the base rate (lower commission -> higher allocation, and vice versa). The special deal and
+// the tiered bonus move the base, so on their own they leave allocation at 100%.
+function ibSpAllocationRate(inp) {
+  var cc = IB_CODES[inp.code];
+  // K/L/M versions also invest 101% of the single contribution (Parameters col I = 1.01; spec 1.4.7)
+  var versionBonus = cc.rpAllocBonus ? cc.rpAllocBonus - 1 : 0;
+  return 1 + (ibBaseSpUp(inp) - ibSpUpRate(inp)) + versionBonus;
+}
+function ibRpAllocationRate(inp) {
+  var cc = IB_CODES[inp.code];
+  return ibCodeAllowsRp(inp.code) ? cc.rpAllocBonus : 1;
+}
+
+// Full projection (50 years, month by month) at one gross growth rate.
+function ibRunProjection(inp, annualGrossRate) {
+  var cc = IB_CODES[inp.code];
+  var bm = arfBlendedMetrics(inp);
+  var spUpRate = ibSpUpRate(inp);
+  var spAllocRate = ibSpAllocationRate(inp);
+  var rpAllowed = ibCodeAllowsRp(inp.code) && (inp.rp || 0) > 0;
+  var rpAllocRate = ibRpAllocationRate(inp);
+  var taxRate = IB_TAX_RATES[inp.policyholderType] || 0;
+
+  var adminM   = arfMonthlyDecrementRate(cc.admin);
+  var extM     = arfMonthlyDecrementRate(bm.ext);
+  var gteeM    = arfMonthlyDecrementRate(bm.gtee);
+  var ongoingM = arfMonthlyDecrementRate(cc.ongoing);
+  var totalMonthlyCharge = adminM + extM + gteeM;
+  var monthlyGrowRate = Math.pow(1 + annualGrossRate, 1 / 12) - 1;
+
+  var dob = new Date(inp.dobStr), startDate = new Date(inp.startStr);
+  var startAge = (startDate - dob) / (365.25 * 24 * 3600 * 1000);
+  var contrib = inp.contribution || 0;
+  var rpAmt = rpAllowed ? inp.rp : 0;
+  var esc = (inp.esc || 0) / 100;
+
+  // Precompute the regular-premium schedule once so the first policy year's total
+  // (needed for the month-1 RP initial commission lump) is known up front.
+  var MAX_MONTHS = 50 * 12;
+  var rpSchedule = [];
+  if (rpAllowed) {
+    var escFactor = 1;
+    for (var m = 1; m <= MAX_MONTHS; m++) {
+      if (m % 12 === 1 && m > 1) escFactor *= (1 + esc);
+      var due = inp.freq === 'monthly' ? true : inp.freq === 'quarterly' ? (m % 3 === 1) : (m % 12 === 1);
+      rpSchedule.push(due ? rpAmt * escFactor : 0);
+    }
+  } else {
+    for (var mi = 0; mi < MAX_MONTHS; mi++) rpSchedule.push(0);
+  }
+  var firstYearRpTotal = rpSchedule.slice(0, 12).reduce(function(a, b) { return a + b; }, 0);
+  var rpInitialComm = rpAllowed ? cc.rpUp * firstYearRpTotal : 0;
+
+  var incomeType = inp.incomeType || 'none';
+  var incomeStartMonth = (incomeType !== 'none' && inp.incomeStartAge != null)
+    ? Math.max(1, Math.round((inp.incomeStartAge - startAge) * 12) + 1) : null;
+  var fixedAnnual = incomeType === 'custom_amount' ? (inp.incomeValue || 0) : 0;
+  var pctAnnual = incomeType === 'custom_pct' ? (inp.incomeValue || 0) / 100 : 0;
+  var incEsc = incomeType === 'custom_amount' ? Math.max(0, (inp.incomeEscalationPct || 0) / 100) : 0;
+
+  var fund = 0, fundSP = 0, fundNoTax = 0, noChargeFund = 0;
+  var Y = 0, AB = 0, prevAA = 0, prevIsDisposal = false, prevTaxDue = 0;
+  var cumPremium = 0, cumGrowth = 0, cumCharges = 0, cumAllocBonus = 0, cumRealizedTax = 0, cumIncome = 0, cumNetIncome = 0;
+  var yrPremium = 0, yrGrowth = 0, yrCharges = 0, yrIncome = 0, yrComm = 0, yrRealizedTax = 0;
+  var rows = [], commRows = [], yearly = [], fundByYear = [contrib * (spAllocRate - IB_GOVT_LEVY)];   // year 0: the single contribution as invested, after the levy (0 for a regular-only plan)
+  var fundZeroYear = null, fundZeroMonth = null;
+  // Per-month series for the reduction-in-yield cashflows, assembled after the loop because
+  // the workbook's window depends on the fund-zero year (Projections AX:BB).
+  var riy = { prem: [], income: [], mainOpen: [], bdOpen: [], bhOpen: [] };
+
+  for (var month = 1; month <= MAX_MONTHS; month++) {
+    var yr = Math.ceil(month / 12);
+    var ageNow = startAge + month / 12;
+
+    var premiumSP = (month === 1) ? contrib : 0;
+    var premiumRP = rpSchedule[month - 1] || 0;
+    var premiumRaw = premiumSP + premiumRP;
+    var allocatedSP = premiumSP * spAllocRate;
+    var allocatedRP = premiumRP * rpAllocRate;
+    var allocated = allocatedSP + allocatedRP;
+
+    var growth = (fund + allocated) * monthlyGrowRate;
+    var charges = (fund + allocated + growth / 2) * totalMonthlyCharge + premiumRaw * IB_GOVT_LEVY;
+    var fundAvail = Math.max(0, fund + allocated + growth - charges);
+
+    // SP-only shadow pool, used only for the surrender-penalty display split below.
+    var growthSP = (fundSP + allocatedSP) * monthlyGrowRate;
+    var chargesSP = (fundSP + allocatedSP + growthSP / 2) * totalMonthlyCharge + premiumSP * IB_GOVT_LEVY;
+    var fundSPAvail = fundSP + allocatedSP + growthSP - chargesSP;
+
+    var incomeActive = incomeStartMonth != null && month >= incomeStartMonth;
+    var escF = Math.pow(1 + incEsc, yr - 1);
+    var desired = incomeType === 'custom_amount' ? (fixedAnnual / 12 * escF)
+                : incomeType === 'custom_pct' ? (pctAnnual / 12 * fundAvail) : 0;
+    var income = incomeActive ? Math.min(desired, fundAvail) : 0;
+    var AA = fundAvail > 0 ? income / fundAvail : 0;
+
+    // Exit cost if fully encashed this month, after this month's income (which the mutually
+    // exclusive RP/income rule means always comes from the SP share): surrender penalty on
+    // the SP-sourced share. The workbook has no RP commission clawback (Projections AF).
+    var spRate = (yr <= cc.surrender.length) ? cc.surrender[yr - 1] : 0;
+    var exitCost = Math.max(0, fundSPAvail - income) * spRate;
+
+    Y = premiumRaw + Y * (1 - prevAA);
+    var isDisposal = (month % IB_DEEMED_DISPOSAL_MONTHS === 0);
+    // AB is the running credit for tax already paid at the last deemed disposal (or on an
+    // actual encashment), carried forward so the next chargeable event only taxes the gain
+    // accrued since then, not the whole policy's gain again.
+    AB = AB * (1 - prevAA) + (prevIsDisposal ? prevTaxDue * (1 - prevAA) : 0);
+    var gain = Math.max(fundAvail + AB - Y, 0);
+    var trigger = isDisposal ? 1 : AA;
+    // Tax actually realised this month (deducted from the policy at a deemed disposal, or
+    // netted against an actual withdrawal) — this is what really leaves the fund/the client.
+    // A real deemed disposal taxes the fund's own gain and is unaffected by any surrender
+    // penalty, since the policy isn't actually being encashed.
+    // Not floored at zero: the workbook lets a deemed-disposal credit (negative tax) through (Projections AC).
+    var taxDue = (Y === 0) ? 0 : trigger * (gain * taxRate - AB);
+    // The unrealised/"if you encashed today" tax liability, shown to the client as a
+    // disclosure figure between chargeable events (zero exactly on a disposal month, since
+    // the real liability was just realised via taxDue instead). Matches the Excel's "Exit
+    // Tax (Maturity Value)" column — it is never actually deducted from the real fund. Unlike
+    // the real deemed-disposal tax, this IS computed net of the surrender penalty, since an
+    // actual encashment would incur that cost before any tax is calculated on the proceeds.
+    var gainNetOfExit = Math.max(fundAvail - income - exitCost + AB - Y, 0);
+    var hypotheticalTax = isDisposal ? 0 : gainNetOfExit * taxRate - AB;
+    var netCash = income - (isDisposal ? AA : 1) * taxDue;
+    var fundReductionFromTax = isDisposal ? (1 - AA) * taxDue : 0;
+
+    var fundClose = Math.max(0, fundAvail - income - fundReductionFromTax);
+    var zSP = fundAvail > 0 ? fundSPAvail / fundAvail : 1;
+    fundSP = Math.max(0, fundSPAvail - income - fundReductionFromTax * zSP);
+
+    // Shadow pools for the reduction-in-yield calculation (Projections BD:BK). Neither pool is
+    // floored at zero. The no-charge pool still bears the levy, and in month 1 it starts from the
+    // raw premium rather than the allocated one (BH75 = I75 + O75).
+    var ntOpen = fundNoTax + allocated;
+    var growthNT = ntOpen * monthlyGrowRate;
+    var chargesNT = (ntOpen + growthNT / 2) * totalMonthlyCharge + premiumRaw * IB_GOVT_LEVY;
+    var ncOpen = noChargeFund + (month === 1 ? premiumRaw : allocated);
+    var growthNC = ncOpen * monthlyGrowRate;
+    riy.prem.push(premiumRaw); riy.income.push(income); riy.mainOpen.push(fund);
+    riy.bdOpen.push(ntOpen); riy.bhOpen.push(ncOpen);
+    fundNoTax = ntOpen + growthNT - chargesNT - income;
+    noChargeFund = ncOpen + growthNC - premiumRaw * IB_GOVT_LEVY - income;
+
+    var commBase = fund + premiumRaw + growth / 2 - charges / 2 - income / 2;
+    var commM = commBase * ongoingM;
+    if (month === 1) commM += spUpRate * contrib + rpInitialComm;
+
+    fund = fundClose;
+    prevAA = AA; prevIsDisposal = isDisposal; prevTaxDue = taxDue;
+
+    cumPremium += premiumRaw; cumGrowth += growth; cumCharges += charges;
+    cumAllocBonus += (allocatedSP - premiumSP) + (allocatedRP - premiumRP);
+    cumRealizedTax += taxDue; cumIncome += income; cumNetIncome += netCash;
+    yrPremium += premiumRaw; yrGrowth += growth; yrCharges += charges; yrIncome += income; yrComm += commM; yrRealizedTax += taxDue;
+
+    var isDepletionMonth = fund <= 0.005 && cumPremium > 0;
+    if (isDepletionMonth && fundZeroMonth == null) { fundZeroMonth = month; fundZeroYear = yr; }
+
+    if (month % 12 === 0) {
+      // "Taxation to date" is the full effective tax picture: tax already actually deducted
+      // from the policy at past deemed-disposal events, plus the unrealised liability that
+      // would additionally be due if the policy were encashed today. The displayed projected
+      // value is then built the same way the Excel's own disclosure table does it — as a
+      // reconciliation of contributions + growth - charges - tax - income — rather than by
+      // reading the internal `fund` variable directly, so the two can never drift apart.
+      var taxToDate = cumRealizedTax + hypotheticalTax;
+      var chargesToDate = cumCharges + exitCost - cumAllocBonus;
+      var displayFund = Math.max(0, cumPremium + cumGrowth - chargesToDate - taxToDate - cumNetIncome);
+
+      if (yr <= 40) fundByYear.push(Math.round(fund));
+
+      var alreadyDepleted = fundZeroYear != null && yr > fundZeroYear;
+      var isDepletionRow = fundZeroYear === yr;
+      if (!alreadyDepleted && (ARF_MILESTONES[yr] || isDepletionRow)) {
+        rows.push({
+          year: yr, age: Math.floor(startAge + yr + 1e-9),
+          A: Math.round(cumPremium), B: Math.round(cumGrowth), C: Math.round(chargesToDate),
+          D: Math.round(taxToDate), E: Math.round(cumNetIncome), F: Math.round(displayFund)
+        });
+      }
+      // Contributions actually paid in this policy year (single + every regular payment due), so quarterly and
+      // annual regular contributions show correctly too, not just monthly ones.
+      if (ARF_MILESTONES[yr]) commRows.push({ year: yr, contrib: yrPremium, comm: Math.round(yrComm) });
+      if (yr <= 40) yearly.push({ year: yr, income: yrIncome, comm: yrComm, charges: yrCharges, tax: yrRealizedTax, fund: fund, displayFund: displayFund });
+
+      yrPremium = 0; yrGrowth = 0; yrCharges = 0; yrIncome = 0; yrComm = 0; yrRealizedTax = 0;
+    }
+  }
+
+  // Workbook window (Projections C52, C53, AX:BB): with a fund-zero year (FZY) the flows run to the end of
+  // that year; without one they run 20 years and the pool is cashed in at month 240. The cash-in is the
+  // OPENING pool value of the month, and for the charges pools only happens while that pool is still
+  // positive and runs out next month.
+  var fzy = fundZeroYear, c53 = fzy != null ? 0 : IB_RIY_YEARS;
+  var horizon = Math.max(c53, fzy || 0) * 12, EPS = 0.005;
+  var cfNoCharge = [], cfChargeNoTax = [];
+  for (var t = 1; t <= MAX_MONTHS; t++) {
+    var yrT = Math.ceil(t / 12), pastFzy = fzy != null && yrT > fzy;
+    var open = riy.bdOpen[t - 1], nextOpen = t < MAX_MONTHS ? riy.bdOpen[t] : 1;
+    var ax = (t === 1) ? riy.prem[0]
+           : ((pastFzy || riy.mainOpen[t - 1] <= EPS || t > c53 * 12) ? 0 : riy.prem[t - 1]);
+    var cash = (t === c53 * 12) ||
+               (fzy != null && (yrT === fzy || yrT + 1 === fzy) && Math.abs(nextOpen) <= EPS && open > EPS);
+    var inc = (pastFzy || Math.abs(open) <= EPS || t > horizon) ? 0 : riy.income[t - 1];
+    cfNoCharge.push(ax - inc - (cash ? riy.bhOpen[t - 1] : 0));
+    cfChargeNoTax.push(ax - inc - (cash ? open : 0));
+  }
+  var irrNoChargeM = arfSolveIRR(cfNoCharge, monthlyGrowRate);
+  var irrChargeM = arfSolveIRR(cfChargeNoTax, monthlyGrowRate - totalMonthlyCharge);
+  var irrNoChargeA = Math.pow(1 + irrNoChargeM, 12) - 1;
+  var irrChargeA = Math.pow(1 + irrChargeM, 12) - 1;
+
+  var firstIncomeYear = null;
+  for (var k = 0; k < yearly.length; k++) { if (yearly[k].income > 0) { firstIncomeYear = yearly[k]; break; } }
+
+  return {
+    rows: rows, commRows: commRows, yearly: yearly, fundByYear: fundByYear,
+    fundZeroYear: fundZeroYear, fundZeroMonth: fundZeroMonth,
+    depletionAge: fundZeroMonth != null ? Math.floor(startAge + fundZeroMonth / 12) : null,
+    effectiveGross: annualGrossRate, netRate: irrChargeA, riy: irrNoChargeA - irrChargeA,
+    chargeRate: cc.admin + bm.ext + bm.gtee,
+    spUpRate: spUpRate, spUpOverridden: inp.spUpOverride != null,
+    spAllocRate: spAllocRate, rpAllocRate: rpAllowed ? rpAllocRate : 1,
+    rpInitialComm: rpInitialComm, firstYearRpTotal: firstYearRpTotal,
+    initialComm: spUpRate * contrib + rpInitialComm,
+    cumRealizedTax: cumRealizedTax, cumIncome: cumIncome, cumNetIncome: cumNetIncome,
+    firstIncome: firstIncomeYear ? firstIncomeYear.income : 0,
+    firstIncomeYear: firstIncomeYear ? firstIncomeYear.year : null,
+    incomeStartMonth: incomeStartMonth,
+    startAge: startAge
+  };
+}
+
+function ibValidate(inp) {
+  var errs = [];
+  if (!inp.dobStr) errs.push('Date of birth is required.');
+  if (!inp.startStr) errs.push('Policy start date is required.');
+  if (inp.dobStr && inp.startStr) {
+    var age = ageBetween(inp.dobStr, inp.startStr);
+    if (age < IB_MIN_AGE || age >= IB_MAX_AGE) errs.push('Age at policy start must be between ' + IB_MIN_AGE + ' and ' + (IB_MAX_AGE - 1) + '.');
+  }
+  var sp = inp.contribution || 0, rp = inp.rp || 0;
+  if (sp <= 0 && rp <= 0) errs.push('Enter a single contribution, a regular contribution, or both.');
+  if (sp > 0 && sp < IB_MIN_SP) errs.push('Minimum single contribution is ' + fEUR(IB_MIN_SP) + '.');
+  if (rp > 0 && !ibCodeAllowsRp(inp.code)) errs.push('The selected version does not support regular contributions — choose a K, L or M version.');
+  if (rp > 0 && inp.incomeType !== 'none') errs.push('Regular contributions and income cannot both be selected — the product assumes a client taking income is not also contributing.');
+  if (inp.incomeType === 'custom_amount' && !(inp.incomeValue > 0)) errs.push('Enter an annual income amount greater than zero.');
+  if (inp.incomeType === 'custom_pct' && !(inp.incomeValue > 0 && inp.incomeValue <= 100)) errs.push('Enter an income percentage between 0 and 100.');
+  if (inp.incomeType !== 'none') {
+    var age2 = inp.dobStr && inp.startStr ? ageBetween(inp.dobStr, inp.startStr) : 0;
+    if (inp.incomeStartAge == null || isNaN(inp.incomeStartAge) || inp.incomeStartAge < Math.floor(age2) || inp.incomeStartAge > (IB_MAX_AGE - 1)) {
+      errs.push('Income start age must be between ' + Math.floor(age2) + ' and ' + (IB_MAX_AGE - 1) + '.');
+    }
+  }
+  var total = 0;
+  Object.keys(inp.diyAllocs || {}).forEach(function(id) { total += inp.diyAllocs[id] || 0; });
+  if (Math.abs(total - 100) > 0.05) errs.push('Fund allocations must total 100%.');
+  return errs;
+}
+
+// The projection as shown in a quote: the first `years` policy years only. Year-by-year figures, the key-year
+// table rows, the remuneration rows and the chart series are cut; a fund that runs out after that is treated as
+// lasting the whole period. Rates (net rate, RIY) are unchanged: they use the workbook's own 20-year window.
+function ibCapProjection(p, years) {
+  var c = {};
+  Object.keys(p).forEach(function(k) { c[k] = p[k]; });
+  c.rows = p.rows.filter(function(rw) { return rw.year <= years; });
+  c.commRows = p.commRows.filter(function(rw) { return rw.year <= years; });
+  c.yearly = p.yearly.slice(0, years);
+  c.fundByYear = p.fundByYear.slice(0, years + 1);
+  if (p.fundZeroYear != null && p.fundZeroYear > years) { c.fundZeroYear = null; c.fundZeroMonth = null; c.depletionAge = null; }
+  return c;
+}
+
+function runIbQuote(inp) {
+  var errs = ibValidate(inp);
+  if (errs.length) return { errors: errs };
+  var bm = arfBlendedMetrics(inp);
+  var rate = inp.rateOverride != null ? inp.rateOverride : ibDefaultRate(inp);
+  var p = ibCapProjection(ibRunProjection(inp, rate), IB_PROJECTION_YEARS);
+  var cc = IB_CODES[inp.code];
+  var mix = [];
+  ARF_FUNDS.forEach(function(f) {
+    var a = (inp.diyAllocs[f.id] || 0) / 100;
+    if (a > 0) mix.push({ fund: f, weight: a, gmab: !!(inp.diyGmab[f.id] && f.gmab) });
+  });
+  return {
+    product: 'ib', inputs: inp, code: inp.code, cc: cc,
+    p: p, years: IB_PROJECTION_YEARS, rate: rate, rateOverridden: inp.rateOverride != null, bm: bm,
+    startAge: p.startAge, contribution: inp.contribution, rp: inp.rp,
+    spUpRate: p.spUpRate, spUpOverridden: p.spUpOverridden,
+    specialDeal: inp.specialDeal || 0, tieredBonus: ibTieredBonus(inp.contribution || 0), baseSpUp: ibBaseSpUp(inp),
+    spAllocRate: p.spAllocRate, rpAllocRate: p.rpAllocRate,
+    initialComm: p.initialComm, rpInitialComm: p.rpInitialComm,
+    clawback: p.spUpRate > 0 || p.rpInitialComm > 0,
+    hasSurrender: cc.surrender.some(function(x) { return x > 0; }),
+    hasGuarantee: mix.some(function(x) { return x.gmab; }),
+    policyholderType: inp.policyholderType, taxRate: IB_TAX_RATES[inp.policyholderType] || 0,
+    mix: mix,
+    portfolioRisk: mixRisk(mix), portfolioSri: (mixRisk(mix) || {}).cls || 0, portfolioVol: (mixRisk(mix) || {}).vol || 0
+  };
+}
