@@ -1,6 +1,6 @@
 // engine_ib.js — Investment Bond (IB) projection engine. Pure functions of their inputs; no DOM.
 //
-// Follows the actuarial IB Illustration Generator workbook (v0.13, sheet Projections). Cell and column
+// Follows the actuarial IB Illustration Generator workbook (v0.15, sheet Projections). Cell and column
 // references in the comments (e.g. Projections AX:BB, Parameters col F) point to that workbook.
 // The IB shares the ARF fund range, 6% growth cap and milestone-year convention, so it reuses
 // arfBlendedMetrics, arfMonthlyDecrementRate, arfSolveIRR, ARF_MILESTONES and ARF_FUNDS from engine_arf.js.
@@ -154,7 +154,7 @@ function ibRunProjection(inp, annualGrossRate) {
     var spRate = (yr <= cc.surrender.length) ? cc.surrender[yr - 1] : 0;
     var exitCost = Math.max(0, fundSPAvail - income) * spRate;
 
-    Y = premiumRaw + Y * (1 - prevAA);
+    Y = premiumRaw * (1 - IB_GOVT_LEVY) + Y * (1 - prevAA);   // exit-tax cost base: contributions net of the 1% levy (workbook v0.15, Projections Y)
     var isDisposal = (month % IB_DEEMED_DISPOSAL_MONTHS === 0);
     // AB is the running credit for tax already paid at the last deemed disposal (or on an
     // actual encashment), carried forward so the next chargeable event only taxes the gain
