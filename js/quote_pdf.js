@@ -313,7 +313,9 @@ function qtChargeMix(fundRows) {
 // Q.embed renders the pages for display inside the tool (no print toolbar, transparent backdrop).
 function qtBuildPack(Q) {
   var T = QT_TEXT, r = Q.r, isPrsa = Q.product === 'prsa', isArf = Q.product === 'arf', isIb = Q.product === 'ib';
-  var clientName = [Q.client.first, Q.client.last].join(' ');
+  // Client names (see qtClientName): a company, one policyholder, or two joined with "and"
+  var clientName = qtClientName(Q.client, false), clientNameT = qtClientName(Q.client, true);
+  var isCorp = qtIsCorp(Q.client), isJoint = qtIsJoint(Q.client);
   var B = []; // blocks: { html, hdr:'agl'|'broker', cls, sec }
   var sec = '';  // pack section the blocks being added belong to (used to find each section's pages)
   function add(html, opts) {
@@ -344,7 +346,7 @@ function qtBuildPack(Q) {
   if (Q.sections.cover) {
     sec = 'cover';
     var addr = (Q.client.address || '').split('\n').filter(function(x){ return x.trim(); });
-    add('<div class="letter-top"><div>' + escHtml(Q.client.salutation + ' ' + clientName) + '<br>' + addr.map(escHtml).join('<br>') + '</div>' +
+    add('<div class="letter-top"><div>' + escHtml(clientNameT) + '<br>' + addr.map(escHtml).join('<br>') + '</div>' +
         '<div class="ldate">' + escHtml(dateLong) + '</div></div>',
         { hdr: 'broker', cls: 'newpage' });
     add('<p class="re"><b>Re: Your ' + escHtml(Q.productName) + ' quotation</b></p>', { hdr: 'broker' });
@@ -358,20 +360,25 @@ function qtBuildPack(Q) {
     sec = 'sos';
     add('<h1>' + escHtml(T.sections.sos) + '</h1>', { hdr: 'broker', cls: 'kwn newpage' });
     add('<div class="imp"><b>' + escHtml(T.sosNoticeTitle.toUpperCase()) + '</b><p>' + escHtml(T.sosNotice) + '</p></div>', { hdr: 'broker' });
-    // Details: date of birth with age today; the retirement age (PRSA) or income start age (ARF, and the Bond if set)
-    var sDob = Q.client.dobStr ? fmtDate(Q.client.dobStr) + ' (age ' + Math.floor(ageBetween(Q.client.dobStr, new Date().toISOString().slice(0, 10))) + ')' : '';
+    // Details: date(s) of birth with age today (none for a corporate client); the retirement age (PRSA) or income
+    // start age (ARF). Investment Bond withdrawals always start with the policy, so the Bond shows no start age.
+    var sDob = qtClientDobs(Q.client).map(function(d) {
+      return fmtDate(d) + ' (age ' + Math.floor(ageBetween(d, new Date().toISOString().slice(0, 10))) + ')';
+    }).join(' and ');
     var sAgeLbl = isPrsa ? 'Retirement age' : 'Income start age';
-    var sAge = isPrsa ? Q.r.nra : (Q.r.inputs && Q.r.inputs.incomeStartAge) || '';
+    var sAge = isPrsa ? Q.r.nra : isArf ? (Q.r.inputs && Q.r.inputs.incomeStartAge) || '' : '';
     var sAdv = escHtml(Q.broker.name) + (Q.broker.title ? ', ' + escHtml(Q.broker.title) : '');
     add('<table class="kv"><tr><td>Client</td><td>' + escHtml(clientName) + '</td><td>Adviser</td><td>' + sAdv + '</td></tr>' +
-        '<tr><td>Date of birth</td><td>' + escHtml(sDob) + '</td><td>Firm</td><td>' + escHtml(Q.broker.firm) + '</td></tr>' +
+        '<tr><td>' + (isCorp ? '' : isJoint ? 'Dates of birth' : 'Date of birth') + '</td><td>' + escHtml(sDob) + '</td><td>Firm</td><td>' + escHtml(Q.broker.firm) + '</td></tr>' +
         '<tr><td>' + (sAge ? escHtml(sAgeLbl) : '') + '</td><td>' + escHtml(String(sAge)) + '</td><td>Date</td><td>' + escHtml(dateLong) + '</td></tr>' +
         '<tr><td>Recommended product</td><td colspan="3">' + escHtml(Q.productName) + '</td></tr></table>', { hdr: 'broker' });
     qtMarkupBlocks(Q.sosText).forEach(function(b, i, all) { add(b, { hdr: 'broker', cls: i === all.length - 1 ? 'kwn' : '' }); });
     add('<div class="sigs"><div><p>' + escHtml(T.sosDeclaration) + '</p><div class="sigline"></div>Adviser: ' + escHtml(Q.broker.name) +
         '<div class="sigline short"></div>Date</div>' +
-        '<div><p>' + escHtml(T.sosClientAck) + '</p><div class="sigline"></div>Client: ' + escHtml(clientName) +
-        '<div class="sigline short"></div>Date</div></div>', { hdr: 'broker' });
+        qtClientNames(Q.client, false).map(function(n) {
+          return '<div><p>' + escHtml(T.sosClientAck) + '</p><div class="sigline"></div>' + (isCorp ? 'For and on behalf of ' : 'Client: ') + escHtml(n) +
+            '<div class="sigline short"></div>Date</div>';
+        }).join('') + '</div>', { hdr: 'broker' });
   }
 
   // ── Adviser documents: risk profile (the client's questionnaire answers and the result) ──
@@ -428,7 +435,7 @@ function qtBuildPack(Q) {
     var ctitle = '<div class="ctitle"><span class="ck">' + escHtml(T.packCoverKickers[Q.product] || T.packCoverKicker) + '</span>' +
         '<h1 class="cn">' + T.packCoverLines.map(function(l, i) { return '<span class="cl' + i + '">' + escHtml(l) + '</span>'; }).join('') +
         brandLines.map(function(l, i) { return '<span class="cb cb' + i + '">' + escHtml(l) + '</span>'; }).join('') + '</h1></div>';
-    var cfor = '<div class="cfor"><b>' + escHtml(qtFill(T.packCoverFor, { clientName: Q.client.salutation + ' ' + clientName })) + '</b>' +
+    var cfor = '<div class="cfor"><b>' + escHtml(qtFill(T.packCoverFor, { clientName: clientNameT })) + '</b>' +
         '<span>' + escHtml(dateLong) + '</span></div>';
     if (!coverImg) {
       add('<div class="cover plain"><div class="clogo">' + qtLogoSvg(30, '#fff') + '</div>' + ctitle + cfor + '</div>', { full: true });
@@ -449,9 +456,10 @@ function qtBuildPack(Q) {
     var mix = qtChargeMix(fundRows);
     var ageStart = r.ageAtStart != null ? r.ageAtStart : r.startAge;
     var cAddr = (Q.client.address || '').split('\n').filter(function(x) { return x.trim(); }).join(', ');
+    var youDobs = qtClientDobs(Q.client).map(function(d) { return escHtml(fmtDate(d)) + ' &middot; age ' + Math.floor(ageBetween(d, r.inputs.startStr)); });
     var youRows = [
-      ['Name', escHtml(Q.client.salutation + ' ' + clientName)],
-      ['Date of birth', escHtml(fmtDate(r.inputs.dobStr)) + ' &middot; age ' + Math.floor(ageStart)],
+      [isCorp ? 'Company' : isJoint ? 'Names' : 'Name', qtClientNames(Q.client, true).map(escHtml).join('<br>')],
+      youDobs.length ? [isJoint ? 'Dates of birth' : 'Date of birth', youDobs.join('<br>')] : null,
       cAddr ? ['Address', escHtml(cAddr)] : null,
       (Q.broker.name || Q.broker.firm) ? ['Adviser', escHtml([Q.broker.name, Q.broker.firm].filter(Boolean).join(', '))] : null   // blank in lite mode
     ];
@@ -467,7 +475,7 @@ function qtBuildPack(Q) {
       contribRows = [
         r.ofvRaw > 0 ? ['Transfer value', fEUR(r.ofvRaw)] : null,
         r.spRaw > 0 ? ['Single contribution', fEUR(r.spRaw)] : null,
-        r.rpRaw > 0 ? ['Regular contribution', fEUR(r.rpRaw) + ' a ' + String(r.freq).replace(/ly$/, '').replace('month', 'month').replace('quarter', 'quarter').replace('annual', 'year') + (r.esc > 0 ? ', +' + r.esc + '% a year' : '')] : null,
+        r.rpRaw > 0 ? ['Regular contribution', fEUR(r.rpRaw) + ' ' + freqPer(r.freq) + (r.esc > 0 ? ', +' + r.esc + '% a year' : '')] : null,
         ['Total paid in by age ' + r.nra, fEUR(r.totalContrib)]
       ];
     } else if (isArf) {
@@ -487,11 +495,12 @@ function qtBuildPack(Q) {
         ['Product', escHtml(brand)],
         ['Version', escHtml(r.code)],
         ['Start date', escHtml(fmtDate(r.inputs.startStr))],
-        ['Policyholder', escHtml(r.policyholderType)]
+        ['Policyholder', escHtml(ibPolicyholderInfo(r.policyholderType).label + (isJoint ? ' (joint)' : ''))]
       ];
       contribRows = [
         r.contribution > 0 ? ['Single contribution', fEUR(r.contribution)] : null,
-        r.rp > 0 ? ['Regular contribution', fEUR(r.rp) + ' ' + escHtml(r.inputs.freq)] : null,
+        r.rp > 0 ? ['Regular contribution', fEUR(r.rp) + ' ' + escHtml(freqPer(r.inputs.freq))] : null,
+        r.inputs.incomeType !== 'none' ? ['Regular withdrawals', escHtml(qtIbIncomeShort(r))] : null,
         ['Exit tax', pct(r.taxRate)],
         r.totalContrib != null ? ['Total paid in', fEUR(r.totalContrib)] : null
       ];
@@ -660,19 +669,20 @@ function qtBuildPack(Q) {
       p(T.ibProjectionIntro);
       add('<div class="chart">' + qtIbChart(r, 640, 220) + '</div>');
       var ibRt = pct(r.rate);
-      var ti = '<table class="num split"><thead><tr class="ltr"><th></th><th></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F = A + B &minus; C &minus; D &minus; E</th></tr>' +
-        '<tr><th>Year</th><th>Age</th><th>Contributions paid</th><th>Investment growth to date</th><th>Charges to date</th><th>Tax to date</th><th>Income taken to date (after tax)</th><th>Projected value</th></tr></thead><tbody>';
+      var ibAge = r.startAge != null;   // no ages for a corporate policyholder
+      var ti = '<table class="num split"><thead><tr class="ltr"><th></th>' + (ibAge ? '<th></th>' : '') + '<th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F = A + B &minus; C &minus; D &minus; E</th></tr>' +
+        '<tr><th>Year</th>' + (ibAge ? '<th>Age</th>' : '') + '<th>Contributions paid</th><th>Investment growth to date</th><th>Charges to date</th><th>Tax to date</th><th>Regular withdrawals to date (after tax)</th><th>Projected value</th></tr></thead><tbody>';
       r.p.rows.forEach(function(rw) {
-        ti += '<tr' + (r.p.fundZeroYear === rw.year ? ' class="mat"' : '') + '><td>' + rw.year + '</td><td>' + rw.age + '</td><td>' + fEUR(rw.A) + '</td><td>' + fEUR(rw.B) + '</td><td>' + fEUR(rw.C) + '</td><td>' + fEUR(rw.D) + '</td><td>' + fEUR(rw.E) + '</td><td><b>' + fEUR(rw.F) + '</b></td></tr>';
+        ti += '<tr' + (r.p.fundZeroYear === rw.year ? ' class="mat"' : '') + '><td>' + rw.year + '</td>' + (ibAge ? '<td>' + rw.age + '</td>' : '') + '<td>' + fEUR(rw.A) + '</td><td>' + fEUR(rw.B) + '</td><td>' + fEUR(rw.C) + '</td><td>' + fEUR(rw.D) + '</td><td>' + fEUR(rw.E) + '</td><td><b>' + fEUR(rw.F) + '</b></td></tr>';
       });
       add(ti + '</tbody></table>', { cls: 'split' });
       imp([qtFill(T.ibImportant, { rate: ibRt })]);
       p(qtFill(T.ibRiy, { rate: ibRt, netRate: pct(r.p.netRate) }));
-      p(r.p.fundZeroYear ? qtFill(T.ibDepletes, { rate: ibRt, year: r.p.fundZeroYear, age: r.p.depletionAge }) : qtFill(T.ibLasts, { rate: ibRt, years: r.years }));
+      p(r.p.fundZeroYear ? qtFill(r.p.depletionAge != null ? T.ibDepletes : T.ibDepletesNoAge, { rate: ibRt, year: r.p.fundZeroYear, age: r.p.depletionAge }) : qtFill(T.ibLasts, { rate: ibRt, years: r.years }));
       var ibStart = r.inputs.incomeType !== 'none' ? qtIncomeStartNote(r, r.p) : '';
       p(qtIbIncomeSentence(r) + (ibStart ? '*' : ''));
       if (ibStart) p(ibStart, 'tiny');
-      p(qtFill(T.ibTaxNote, { rate: pct(r.taxRate), ptype: r.policyholderType }));
+      p(qtFill(T.ibTaxNote, { rate: pct(r.taxRate), ptype: ibPolicyholderInfo(r.policyholderType).phrase }));
       p(T.ibDepletionWarning);
       if (r.hasSurrender) p(T.ibSurrenderNote);
     }
@@ -701,7 +711,7 @@ function qtBuildPack(Q) {
     if (isPrsa) {
       // In order: going in, while invested (the PRSA has no exit charges)
       // Contribution charges: one row per contribution in the plan, with the rule that sets the charge
-      var CR = T.prsaContribRule, per = { monthly: ' a month', quarterly: ' a quarter', annual: ' a year' }[r.freq] || '';
+      var CR = T.prsaContribRule, per = ' ' + freqPer(r.freq);
       var ccRows = [
         r.spRaw > 0 ? ['Single contribution', fEUR(r.spRaw), r.spContribCharge, qtFill(CR.sp, { charge: pct(CONTRIB_SP_CHARGE), threshold: fEUR(CONTRIB_SP_THRESHOLD) })] : null,
         r.rpRaw > 0 ? ['Regular contribution', fEUR(r.rpRaw) + per, r.rpContribCharge, qtFill(CR.rp, { charge: pct(CONTRIB_RP_CHARGE), threshold: fEUR(CONTRIB_RP_THRESHOLD) })] : null,
@@ -764,7 +774,7 @@ function qtBuildPack(Q) {
         add(et2 + '</tr></tbody></table>');
       } else p(T.ibNoExitCharges);
       add('<h3 class="kwn">Exit tax</h3>');
-      p(qtFill(T.ibExitTaxNote, { rate: pct(r.taxRate), ptype: r.policyholderType }));
+      p(qtFill(T.ibExitTaxNote, { rate: pct(r.taxRate), ptype: ibPolicyholderInfo(r.policyholderType).phrase }));
       if (QT_SHOW_EFFECT_OF_CHARGES) add('<h3 class="kwn">Effect of charges</h3>');
       if (QT_SHOW_EFFECT_OF_CHARGES) p(qtFill(T.ibRiyCharges, { rate: pct(r.rate), netRate: pct(r.p.netRate) }) + ' ' + qtRiyWhy('ib', r));
     }
@@ -848,7 +858,7 @@ function qtBuildPack(Q) {
     add('<div class="defs two">' + T.packImportant.map(function(d) {
       return '<div><b>' + escHtml(d[0]) + '</b><span>' + escHtml(qtFill(d[1], { productBrand: brand })) + '</span></div>';
     }).join('') + '</div>');
-    T.importantInfo.forEach(function(l) { p(qtFill(l, { regDoc: isPrsa ? T.regDocPrsa : isArf ? T.regDocArf : T.regDocIb }), 'tiny'); });
+    T.importantInfo.forEach(function(l) { p(qtFill(l, { regDoc: isPrsa ? T.regDocPrsa : isArf ? T.regDocArf : T.regDocIb, incomeTaken: isIb ? 'any regular withdrawals taken' : 'the income taken' }), 'tiny'); });
     // Standing projection notes (the IMPORTANT assumptions box is on the projection page)
     if (isPrsa) {
       p(T.prsaAverageNote, 'tiny');
@@ -960,7 +970,7 @@ function qtPrsaContribInYear(r, s) {
   return s.rpInYear + (s.year === 1 ? r.spRaw + r.ofvRaw : 0);
 }
 
-// Income escalation and income wording for the ARF and Investment Bond
+// Income escalation and income wording for the ARF, and regular withdrawal wording for the Investment Bond
 function qtArfEsc(r) {
   var i = r.inputs;
   return (i.incomeType === 'custom_amount' && i.incomeEscalationPct != null) ? i.incomeEscalationPct / 100 : ARF_INCOME_ESC;
@@ -986,6 +996,7 @@ function qtIncomeStartNote(r, proj) {
   if (!m) return '';
   var st = new Date(r.inputs.startStr), d = new Date(st.getFullYear(), st.getMonth() + m - 1, 1);
   var when = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][d.getMonth()] + ' ' + d.getFullYear();
+  if (r.product === 'ib') return qtFill(QT_TEXT.ibWithdrawalStartNote, { when: when, month: m });
   var age = r.inputs.incomeStartAge;
   return qtFill(age != null ? QT_TEXT.incomeStartNoteAge : QT_TEXT.incomeStartNote, { when: when, month: m, age: age });
 }
@@ -998,8 +1009,14 @@ function qtIbIncomeSentence(r) {
   if (i.incomeType === 'none') s = T.ibIncomeNone;
   else if (i.incomeType === 'custom_amount') s = qtFill(T.ibIncomeAmount, { income: fEUR(i.incomeValue), esc: pct(qtIbEsc(r)) });
   else s = qtFill(T.ibIncomePct, { incomePct: (+i.incomeValue).toFixed(2) + '%', income: fEUR(r.contribution * i.incomeValue / 100) });
-  if (i.incomeType !== 'none' && i.incomeStartAge > Math.ceil(r.startAge)) s += ' ' + qtFill(T.ibDeferNote, { incomeAge: i.incomeStartAge });
   return s;
+}
+// Investment Bond regular withdrawals in a few words, for summary rows
+function qtIbIncomeShort(r) {
+  var i = r.inputs;
+  if (i.incomeType === 'none') return 'None';
+  if (i.incomeType === 'custom_amount') return fEUR(i.incomeValue) + ' a year' + (qtIbEsc(r) > 0 ? ', increasing ' + pct(qtIbEsc(r)) + ' a year' : '');
+  return i.incomeValue + '% of fund a year';
 }
 
 // Allianz Neo, as loaded by a1-elements.css in the tool itself
@@ -1087,10 +1104,10 @@ function qtPackCss() {
     '.letter-top .ldate { margin-top: 5mm; }',
     '.re { margin-bottom: 1mm; }',
     '.sigblock { margin-top: 9mm; font-size: 9pt; line-height: 1.55; }',
-    '.sigline { border-bottom: 0.75pt solid #0E1E33; width: 60mm; height: 12mm; margin-bottom: 1.5mm; }',
+    '.sigline { border-bottom: 0.75pt solid #0E1E33; width: 60mm; max-width: 100%; height: 12mm; margin-bottom: 1.5mm; }',
     '.sigline.short { width: 35mm; height: 9mm; }',
     '.sigs { display: flex; gap: 10mm; margin-top: 4mm; font-size: 8.6pt; }',
-    '.sigs > div { flex: 1; } .sigs p { font-size: 8.6pt; }',
+    '.sigs > div { flex: 1; min-width: 0; } .sigs p { font-size: 8.6pt; }',
     // ── Quotation pack page styles ──
     // Full-bleed pages: the block is the page, with no header, footer or page number.
     '.page.full { padding: 0; }',

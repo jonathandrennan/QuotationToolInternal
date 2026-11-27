@@ -14,7 +14,7 @@
 //   diyAllocs               { fundId: percent }   (DIY only)
 //   diyGmab                 { fundId: bool }      (DIY only)
 //   sp, ofv, rp             single premium, opening fund value (transfer), regular premium per payment
-//   freq                    'monthly' | 'quarterly' | 'annual'
+//   freq                    'monthly' | 'quarterly' | 'halfyearly' | 'annual'
 //   esc                     regular premium escalation, percent p.a.
 //   specialDeal             null or PRSA_SPECIAL_DEAL: Allianz-paid extra on the single/transfer rate
 // }
@@ -86,6 +86,7 @@ function prsaProjectAtFlatRate(annualRate, ofv, sp, rpMonthly, freq, esc, termMo
       var due = false;
       if (freq === 'monthly')   due = true;
       if (freq === 'quarterly') due = (m % 3 === 1);
+      if (freq === 'halfyearly') due = (m % 6 === 1);
       if (freq === 'annual')    due = (m % 12 === 1);
       if (due) rpGross = rpMonthly * escFactor;
     }
@@ -178,7 +179,7 @@ function runPrsaQuote(inp) {
   var spContribCharge = (spRaw > 0 && spRaw < CONTRIB_SP_THRESHOLD) ? CONTRIB_SP_CHARGE : 0;
   var rpMonthly       = rpRaw;
   // The workbook tests the monthly equivalent of every payment, escalated amounts included (SRP!Z).
-  var payPerYear = freq === 'monthly' ? 12 : freq === 'quarterly' ? 4 : 1;
+  var payPerYear = freq === 'monthly' ? 12 : freq === 'quarterly' ? 4 : freq === 'halfyearly' ? 2 : 1;
   function rpChargeFor(payment) { return (payment * payPerYear / 12 <= CONTRIB_RP_THRESHOLD - 0.01) ? CONTRIB_RP_CHARGE : 0; }
   var rpContribCharge = rpRaw > 0 ? rpChargeFor(rpRaw) : 0;   // first-year rate, for display
 
@@ -215,6 +216,7 @@ function runPrsaQuote(inp) {
       var due = false;
       if (freq === 'monthly')   due = true;
       if (freq === 'quarterly') due = (m % 3 === 1);
+      if (freq === 'halfyearly') due = (m % 6 === 1);
       if (freq === 'annual')    due = (m % 12 === 1);
       if (due) rpGross = rpMonthly * escalFactor;
     }

@@ -14,13 +14,17 @@ var IB_DEEMED_DISPOSAL_MONTHS = 96;  // Irish life-assurance deemed disposal: ev
 var IB_RIY_YEARS = 20;               // RIY cashflow window used when the fund never depletes
 var IB_PROJECTION_YEARS = 20;        // years shown in quotes (table, chart, remuneration); the engine still runs 40
 
-// Exit tax rate by policyholder type
+// Exit tax rate by policyholder type. The tool sets the type from the customer type chosen in Step 2
+// (individual or corporate); a corporate policyholder can be marked tax exempt in the Plan step.
 var IB_TAX_RATES = { individual: 0.38, corporate: 0.25, exempt: 0 };
 var IB_POLICYHOLDER_TYPES = [
-  { id: 'individual', label: 'Individual' },
-  { id: 'corporate',  label: 'Corporate' },
-  { id: 'exempt',     label: 'Exempt' }
+  { id: 'individual', label: 'Individual',              phrase: 'an individual' },
+  { id: 'corporate',  label: 'Corporate',               phrase: 'a corporate' },
+  { id: 'exempt',     label: 'Corporate (tax exempt)',  phrase: 'a tax-exempt corporate' }
 ];
+function ibPolicyholderInfo(type) {
+  return IB_POLICYHOLDER_TYPES.filter(function(t) { return t.id === type; })[0] || IB_POLICYHOLDER_TYPES[0];
+}
 
 // Tiered bonus commission on large single contributions (IB workbook "Tiered Bonus Commission",
 // Parameters C112:D114). Extra initial commission paid by Allianz to the adviser on top of the standard
@@ -44,6 +48,7 @@ function ibTieredBonus(singleContribution) { return ibTier(singleContribution).b
 
 // Product limits (from the product spec; the workbook does not hold them)
 var IB_MIN_SP = 10000;
+var IB_MIN_SP_RP_CODES = 5000;   // K, L and M versions, where the single contribution goes with regular contributions
 var IB_MIN_AGE = 18;
 var IB_MAX_AGE = 80; // exclusive — "maximum age at entry is 79, defined as 80th birthday"
 
@@ -148,3 +153,5 @@ var IB_SP_COMM_RANGE = {
 // Codes on which a regular premium is permitted at all
 var IB_RP_CODES = Object.keys(IB_CODES).filter(function(c) { return IB_CODES[c].rpAllocBonus > 0; });
 function ibCodeAllowsRp(code) { return IB_RP_CODES.indexOf(code) >= 0; }
+// Minimum single contribution for a version
+function ibMinSp(code) { return ibCodeAllowsRp(code) ? IB_MIN_SP_RP_CODES : IB_MIN_SP; }

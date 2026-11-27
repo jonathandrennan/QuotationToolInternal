@@ -270,6 +270,12 @@ input::placeholder, textarea::placeholder { color:var(--faint); }
 /* ─── Step 2: product and client ────────────────────────────────────────────── */
 .client-grid { grid-template-columns:120px minmax(0, 1fr) minmax(0, 1fr); }
 .dobwrap { position:relative; }
+.cl-body { display:flex; flex-direction:column; gap:18px; min-width:0; }
+.cl-cap { display:block; margin-bottom:6px; font-size:13px; font-weight:600; color:var(--ink); }
+.cl-sub { grid-column:1 / -1; padding-top:4px; font-size:14px; font-weight:700; color:var(--navy); }
+.ptype-v { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 14px; margin-top:16px; font-size:14px; }
+.ptype-v b { color:var(--navy); }
+.ptype-v span { color:var(--muted); }
 .dob-age { position:absolute; right:48px; bottom:0; display:flex; align-items:center; height:44px; color:var(--muted); font-size:13px; pointer-events:none; }
 .strip { display:flex; flex-wrap:wrap; gap:8px 36px; padding:14px 18px; border-radius:10px; background:var(--tint); color:var(--body); font-size:14px; }
 .strip:empty { display:none; }
@@ -353,6 +359,10 @@ input::placeholder, textarea::placeholder { color:var(--faint); }
 .comm-h .ov { color:var(--body); }
 .comm-h .chev { flex:none; color:var(--navy); font-size:14px; transition:transform .2s; }
 .comm-h[aria-expanded="false"] .chev { transform:rotate(-90deg); }
+/* "Edit" on the right of the collapsed panel, so it is clear the commission can be changed */
+.comm-h .comm-act { flex:none; display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border:1px solid var(--navy); border-radius:6px; background:#fff; color:var(--navy); font-weight:600; white-space:nowrap; }
+.comm-h:hover .comm-act { background:var(--navy); color:#fff; }
+.comm-h:hover .comm-act .chev { color:#fff; }
 .comm-b { border-top:1px solid var(--line); }
 .comm-note { padding:10px 18px 0; font-size:12px; color:var(--muted); }
 .comm-r { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:2px 16px; align-items:center; padding:14px 18px; border-top:1px solid var(--div); }
@@ -941,18 +951,41 @@ input[type=text], input[type=number], input[type=date], select, textarea { min-w
     <div class="rcards" id="prod-cards" role="radiogroup" aria-labelledby="prod-cap">
       <button type="button" class="rcard" role="radio" data-prod="prsa" onclick="setProduct('prsa')"><span class="tick" aria-hidden="true">✓</span><span class="t">PRSA</span><span class="d">Personal retirement savings. Contributions, transfers and a projection to retirement age.</span></button>
       <button type="button" class="rcard" role="radio" data-prod="arf" onclick="setProduct('arf')"><span class="tick" aria-hidden="true">✓</span><span class="t">ARF</span><span class="d">Approved Retirement Fund. Invest a retirement fund and draw an income from it.</span></button>
-      <button type="button" class="rcard" role="radio" data-prod="ib" onclick="setProduct('ib')"><span class="tick" aria-hidden="true">✓</span><span class="t">Investment Bond</span><span class="d">Single or regular investment, with optional income. Exit tax applies.</span></button>
+      <button type="button" class="rcard" role="radio" data-prod="ib" onclick="setProduct('ib')"><span class="tick" aria-hidden="true">✓</span><span class="t">Investment Bond</span><span class="d">Single or regular investment, with optional regular withdrawals. Exit tax applies.</span></button>
     </div>
   </div>
   <section class="card fsec">
     <div class="fsec-h"><h2>Client</h2><p>Name and address are used on the cover letter.</p></div>
-    <div class="fields client-grid">
-      <div><label class="f" for="c-sal">Title</label>
-        <select id="c-sal" data-c="salutation"><option>Mr</option><option>Ms</option><option>Mrs</option><option>Miss</option><option>Dr</option><option>Mx</option></select></div>
-      <div><label class="f" for="c-first">First name</label><input type="text" id="c-first" data-c="first"></div>
-      <div><label class="f" for="c-last">Last name</label><input type="text" id="c-last" data-c="last"></div>
-      <div class="span2 dobwrap"><label class="f" for="c-dob">Date of birth</label><input type="date" id="c-dob" data-c="dobStr"><span class="dob-age" id="dob-age" aria-live="polite"></span></div>
-      <div class="spanall"><label class="f" for="c-address">Address <span class="opt">· for cover letter</span></label><textarea id="c-address" rows="2" data-c="address"></textarea></div>
+    <!-- Investment Bond: individual (one or two policyholders) or corporate. Other products are always one individual. -->
+    <div class="cl-body">
+      <div id="c-type-wrap" hidden><span class="cl-cap" id="c-type-q">Customer type</span>
+        <div class="seg" id="c-type-seg" role="radiogroup" aria-labelledby="c-type-q">
+          <button type="button" role="radio" data-v="individual" onclick="setClientType('individual')">Individual</button><button type="button" role="radio" data-v="corporate" onclick="setClientType('corporate')">Corporate</button>
+        </div>
+        <div class="hint">Sets the policyholder type and the rate of exit tax.</div></div>
+      <div class="fields" id="c-corp" hidden>
+        <div><label class="f" for="c-company">Company name</label><input type="text" id="c-company" data-c="company"></div>
+      </div>
+      <div class="fields client-grid" id="c-person">
+        <div class="cl-sub" id="c-person-h" hidden>First policyholder</div>
+        <div><label class="f" for="c-sal">Title</label>
+          <select id="c-sal" data-c="salutation"><option>Mr</option><option>Ms</option><option>Mrs</option><option>Miss</option><option>Dr</option><option>Mx</option></select></div>
+        <div><label class="f" for="c-first">First name</label><input type="text" id="c-first" data-c="first"></div>
+        <div><label class="f" for="c-last">Last name</label><input type="text" id="c-last" data-c="last"></div>
+        <div class="span2 dobwrap"><label class="f" for="c-dob">Date of birth</label><input type="date" id="c-dob" data-c="dobStr"><span class="dob-age" id="dob-age" aria-live="polite"></span></div>
+      </div>
+      <label class="check" id="c-joint-wrap" hidden><input type="checkbox" id="c-joint" onchange="setJoint(this.checked)"><span>Add a second policyholder</span></label>
+      <div class="fields client-grid" id="c-person2" hidden>
+        <div class="cl-sub">Second policyholder</div>
+        <div><label class="f" for="c-sal2">Title</label>
+          <select id="c-sal2" data-c="salutation2"><option>Mr</option><option>Ms</option><option>Mrs</option><option>Miss</option><option>Dr</option><option>Mx</option></select></div>
+        <div><label class="f" for="c-first2">First name</label><input type="text" id="c-first2" data-c="first2"></div>
+        <div><label class="f" for="c-last2">Last name</label><input type="text" id="c-last2" data-c="last2"></div>
+        <div class="span2 dobwrap"><label class="f" for="c-dob2">Date of birth</label><input type="date" id="c-dob2" data-c="dobStr2"><span class="dob-age" id="dob-age2" aria-live="polite"></span></div>
+      </div>
+      <div class="fields">
+        <div><label class="f" for="c-address">Address <span class="opt">· for cover letter</span></label><textarea id="c-address" rows="2" data-c="address"></textarea></div>
+      </div>
     </div>
   </section>
   <section class="card fsec">
@@ -1055,7 +1088,7 @@ input[type=text], input[type=number], input[type=date], select, textarea { min-w
             <div data-ct="ofv"><label class="f" for="p-ofv">Transfer value</label><div class="affix has-pre"><span class="pre">€</span><input type="text" inputmode="decimal" id="p-ofv" data-p="ofv"></div></div>
             <div data-ct="sp"><label class="f" for="p-sp">Single contribution</label><div class="affix has-pre"><span class="pre">€</span><input type="text" inputmode="decimal" id="p-sp" data-p="sp"></div></div>
             <div data-ct="rp" class="rowstart"><label class="f" for="p-rp">Regular contribution</label><div class="affix has-pre has-suf long"><span class="pre">€</span><input type="text" inputmode="decimal" id="p-rp" data-p="rp"><span class="suf">per payment</span></div></div>
-            <div data-ct="rp"><label class="f" for="p-freq">Frequency</label><select id="p-freq" data-p="freq"><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option></select></div>
+            <div data-ct="rp"><label class="f" for="p-freq">Frequency</label><select id="p-freq" data-p="freq"><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="halfyearly">Half-yearly</option><option value="annual">Annual</option></select></div>
             <div data-ct="rp"><label class="f" for="p-esc">Yearly increase</label><select id="p-esc" data-p="esc"><option value="0">0%</option><option value="5">5%</option></select></div>
           </div>
           <div class="hint" id="p-contrib-hint"></div>
@@ -1099,35 +1132,35 @@ input[type=text], input[type=number], input[type=date], select, textarea { min-w
         </div>
         <div class="card">
           <h2 class="card-t">Policyholder type</h2>
-          <p class="card-sub">Determines the rate of exit tax: Individual 38%, Corporate 25%, Exempt 0%.</p>
-          <div class="seg" id="i-ptype-seg" style="margin-top:16px" role="radiogroup" aria-label="Policyholder type"></div>
+          <p class="card-sub">Set by the customer type chosen with the client details. It determines the rate of exit tax: individual 38%, corporate 25%, tax-exempt corporate 0%.</p>
+          <div id="i-ptype"></div>
         </div>
         <div class="card">
           <h2 class="card-t">Contributions</h2>
           <p class="card-sub">Select everything that applies.</p>
           <div class="ctchips" id="i-ctchips" role="group" aria-label="Contribution types"></div>
           <div class="fields" style="--cols:3" id="i-ctfields">
-            <div data-ct="sp"><label class="f" for="i-sp">Single contribution</label><div class="affix has-pre"><span class="pre">€</span><input type="text" inputmode="decimal" id="i-sp" data-i="contribution"></div><div class="hint">Minimum €10,000</div></div>
+            <div data-ct="sp"><label class="f" for="i-sp">Single contribution</label><div class="affix has-pre"><span class="pre">€</span><input type="text" inputmode="decimal" id="i-sp" data-i="contribution"></div><div class="hint" id="i-sp-hint"></div></div>
             <div data-ct="rp" class="rowstart"><label class="f" for="i-rp">Regular contribution</label><div class="affix has-pre has-suf long"><span class="pre">€</span><input type="text" inputmode="decimal" id="i-rp" data-i="rp"><span class="suf">per payment</span></div></div>
-            <div data-ct="rp"><label class="f" for="i-freq">Frequency</label><select id="i-freq" data-i="freq"><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option></select></div>
+            <div data-ct="rp"><label class="f" for="i-freq">Frequency</label><select id="i-freq" data-i="freq"><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="halfyearly">Half-yearly</option><option value="annual">Annual</option></select></div>
             <div data-ct="rp"><label class="f" for="i-esc">Yearly increase</label><select id="i-esc" data-i="esc"><option value="0">0%</option><option value="5">5%</option></select></div>
           </div>
           <div id="i-rp-warn"></div>
         </div>
         <div class="card">
-          <h2 class="card-t">Income</h2>
+          <h2 class="card-t">Regular withdrawals</h2>
+          <p class="card-sub">Regular withdrawals start with the policy. They can also be set up later on request.</p>
           <div class="fields" style="--cols:2; margin-top:18px">
-            <div><label class="f" for="i-itype">Income</label>
+            <div><label class="f" for="i-itype">Regular withdrawals</label>
               <select id="i-itype" data-i="incomeType">
-                <option value="none">No income — grow the policy</option>
+                <option value="none">No regular withdrawals — grow the policy</option>
                 <option value="custom_amount">Fixed amount per year</option>
                 <option value="custom_pct">Percentage of fund per year</option>
               </select></div>
-            <div id="i-ival-wrap"><label class="f" for="i-ival" id="i-ival-lbl">Income</label><input type="text" inputmode="decimal" id="i-ival" data-i="incomeValue"></div>
-            <div id="i-iesc-wrap"><label class="f" for="i-iesc">Yearly increase in income</label><div class="affix has-suf"><input type="number" id="i-iesc" min="0" max="10" step="0.5" data-i="incomeEscalationPct"><span class="suf">%</span></div></div>
-            <div id="i-iage-wrap"><label class="f" for="i-iage">Income start age</label><input type="number" id="i-iage" min="18" max="79" step="1" data-i="incomeStartAge"></div>
+            <div id="i-ival-wrap"><label class="f" for="i-ival" id="i-ival-lbl">Regular withdrawals</label><input type="text" inputmode="decimal" id="i-ival" data-i="incomeValue"></div>
+            <div id="i-iesc-wrap"><label class="f" for="i-iesc">Yearly increase in regular withdrawals</label><div class="affix has-suf"><input type="number" id="i-iesc" min="0" max="10" step="0.5" data-i="incomeEscalationPct"><span class="suf">%</span></div></div>
           </div>
-          <div class="hint" id="i-income-note" hidden>Income isn't available with regular contributions.</div>
+          <div class="hint" id="i-income-note" hidden></div>
         </div>
       </div>
       <div id="plan-errs"></div>
@@ -1384,7 +1417,9 @@ var S = {
   lite: true,   // on by default (set again in init)
   broker: { firm:'', name:'', title:'', email:'', phone:'', address:'', regStatement:'', logo:'' },   // logo: PNG/JPEG data URL, or ''
   consent: false,
-  client: { salutation:'Mr', first:'', last:'', address:'', dobStr:'' },
+  // type: 'individual' | 'corporate' and joint (a second policyholder) apply to the Investment Bond only; see effClient()
+  client: { type:'individual', company:'', salutation:'Mr', first:'', last:'', address:'', dobStr:'',
+            joint:false, salutation2:'Mr', first2:'', last2:'', dobStr2:'' },
   startStr: '',
   // override: audit record when the adviser proceeds with a portfolio that doesn't match the
   // client's rating — { key, strategy, clientSri, direction, reason, recordedAt (ISO) }
@@ -1401,8 +1436,9 @@ var S = {
           specialDeal: null, strat: null, diySel: {}, diyAllocs: {}, diyGmab: {} },
   arf:  { code: 'A5', contribution: 0, incomeType: 'default', incomeValue: 0, incomeStartAge: null, incomeEscalationPct: 2,
           specialDeal: null, spUpOverride: null, rate1Override: null, rate2Override: null, diySel: {}, diyAllocs: {}, diyGmab: {} },
-  ib:   { code: 'D1', policyholderType: 'individual', ctype: '', contribution: 0, rp: 0, freq: 'monthly', esc: 0,
-          incomeType: 'none', incomeValue: 0, incomeStartAge: null, incomeEscalationPct: 0,
+  // taxExempt: a corporate policyholder exempt from exit tax (see ibPolicyholderType). income*: regular withdrawals.
+  ib:   { code: 'D1', taxExempt: false, ctype: '', contribution: 0, rp: 0, freq: 'monthly', esc: 0,
+          incomeType: 'none', incomeValue: 0, incomeEscalationPct: 0,
           specialDeal: null, spUpOverride: null, rateOverride: null, diySel: {}, diyAllocs: {}, diyGmab: {} },
   result: null, resTab: 'proj', resSeen: {}, resAllYears: false, remTable: false,
   sections: {}, packStage: 'contents', coverMode: 'template', sosMode: 'template',
@@ -1422,8 +1458,22 @@ function sfdrBadge(a) { return a ? '<span class="sfdr a' + a + '" title="SFDR Ar
 function shortFundName(f) { return f.shortName || f.name.replace(/^Allianz /, ''); }
 function pctW(w) { return (+(w * 100).toFixed(1)) + '%'; }
 function fK(n) { return n >= 1000 ? '€' + (+(n / 1000).toFixed(n % 1000 ? 1 : 0)) + 'k' : fEUR(n); }
-function freqShort(f) { return f === 'annual' ? '/yr' : f === 'quarterly' ? '/q' : '/m'; }
-function perYear(f) { return f === 'annual' ? 1 : f === 'quarterly' ? 4 : 12; }
+function freqShort(f) { return freqInfo(f).short; }
+function perYear(f) { return freqInfo(f).perYear; }
+// ── Client: individual (one or two policyholders) or corporate. Only the Investment Bond offers corporate and joint. ──
+function clientIsCorp() { return S.product === 'ib' && S.client.type === 'corporate'; }
+function clientIsJoint() { return S.product === 'ib' && !clientIsCorp() && !!S.client.joint; }
+function clientDob() { return clientIsCorp() ? '' : S.client.dobStr; }
+// The client as the pack and the name helpers in quote_common.js (qtClientName etc.) expect it
+function effClient() {
+  var c = {};
+  Object.keys(S.client).forEach(function(k) { c[k] = S.client[k]; });
+  c.type = clientIsCorp() ? 'corporate' : 'individual';
+  c.joint = clientIsJoint();
+  return c;
+}
+// Investment Bond policyholder type, for the exit tax rate (IB_TAX_RATES)
+function ibPolicyholderType() { return clientIsCorp() ? (S.ib.taxExempt ? 'exempt' : 'corporate') : 'individual'; }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 function init() {
@@ -1481,7 +1531,6 @@ function init() {
     el.value = (k === 'contribution' || k === 'rp') ? (S.ib[k] ? fNum(S.ib[k]) : '') : S.ib[k];
     el.addEventListener('input', function() {
       if (k === 'incomeType') { S.ib.incomeType = el.value; S.ib.incomeValue = 0; $('i-ival').value = ''; renderIbIncome(); invalidate(4); }
-      else if (k === 'incomeStartAge') S.ib.incomeStartAge = el.value === '' ? null : parseInt(el.value, 10);
       else if (k === 'freq') S.ib.freq = el.value;
       else if (k === 'contribution') {
         // crossing a tiered-bonus threshold moves the standard rate, so clear any manual change against the old one
@@ -1623,7 +1672,7 @@ function stepCaption(s) {
   try {
     var b = S.broker, c = S.client;
     if (s === 1) return [b.name, b.firm].filter(Boolean).join(' · ');
-    if (s === 2) return PRODUCT_LABELS[S.product] + ' · ' + [c.salutation, c.first, c.last].filter(Boolean).join(' ');
+    if (s === 2) return PRODUCT_LABELS[S.product] + ' · ' + qtClientName(effClient(), true);
     if (s === 3) return S.risk.sri ? S.risk.sri + ' · ' + ESMA_LABELS[S.risk.sri] + (profilerDone() ? ' · Profiled' : '') + (S.risk.esg ? ' · ESG preference' : '') : '';
     if (s === 4) {
       if (S.product === 'prsa') {
@@ -1649,6 +1698,7 @@ function stepCaption(s) {
       if (S.product === 'prsa') return fEUR(r.fundWC) + ' at ' + r.nra;
       var pp = S.product === 'arf' ? r.p1 : r.p;
       if (S.product === 'ib' && r.inputs.incomeType === 'none') { var row = ibHeadlineRow(r); return row ? fEUR(row.F) + ' after ' + row.year + ' years' : ''; }
+      if (pp.fundZeroYear && pp.depletionAge == null) return 'Runs out in year ' + pp.fundZeroYear;
       return pp.fundZeroYear ? 'Lasts to age ' + pp.depletionAge : 'Lasts 40+ years';
     }
   } catch (e) {}
@@ -1813,19 +1863,37 @@ function validateStep(s) {
     if (bad.length) errs.push('Please complete the highlighted adviser details.');
     else if (!S.consent) errs.push('Please confirm the adviser declaration.');
   } else if (s === 2) {
-    if (!S.client.first.trim()) bad.push('c-first');
-    if (!S.client.last.trim()) bad.push('c-last');
-    if (!S.client.dobStr) bad.push('c-dob');
+    var c = S.client, corp = clientIsCorp(), joint = clientIsJoint();
+    if (corp) {
+      if (!c.company.trim()) bad.push('c-company');
+    } else {
+      if (!c.first.trim()) bad.push('c-first');
+      if (!c.last.trim()) bad.push('c-last');
+      if (!c.dobStr) bad.push('c-dob');
+      if (joint) {
+        if (!c.first2.trim()) bad.push('c-first2');
+        if (!c.last2.trim()) bad.push('c-last2');
+        if (!c.dobStr2) bad.push('c-dob2');
+      }
+    }
     if (!S.startStr) bad.push('q-start');
     if (bad.length) errs.push('Please complete the highlighted client details.');
-    else {
+    else if (corp) {
+      // a company has no age limits
+    } else if (S.product === 'ib') {
+      [['c-dob', c.dobStr]].concat(joint ? [['c-dob2', c.dobStr2]] : []).forEach(function(d) {
+        var a = ageBetween(d[1], S.startStr);
+        if (a < IB_MIN_AGE || a >= IB_MAX_AGE) bad.push(d[0]);
+      });
+      if (bad.length) errs.push('For an Investment Bond ' + (joint ? 'each policyholder' : 'the client') + ' must be aged between ' + IB_MIN_AGE + ' and ' + (IB_MAX_AGE - 1) + ' at the start date.');
+    } else {
       var age = ageBetween(S.client.dobStr, S.startStr);
       if (S.product === 'prsa') {
         if (isNaN(S.prsa.nra) || S.prsa.nra < 60 || S.prsa.nra > 75) { bad.push('q-nra'); errs.push('Retirement age must be between 60 and 75.'); }
         else if (age < 18 || age >= S.prsa.nra) { bad.push('c-dob'); errs.push('The client must be at least 18 and younger than the retirement age.'); }
       } else if (S.product === 'arf') {
         if (age < 50 || age > 84) { bad.push('c-dob'); errs.push('For an ARF the client must be aged between 50 and 84 at the start date.'); }
-      } else if (age < IB_MIN_AGE || age >= IB_MAX_AGE) { bad.push('c-dob'); errs.push('For an Investment Bond the client must be aged between ' + IB_MIN_AGE + ' and ' + (IB_MAX_AGE - 1) + ' at the start date.'); }
+      }
     }
   } else if (s === 3) {
     var prof = profilerDone();
@@ -1888,8 +1956,41 @@ function setProduct(p) {
   document.querySelectorAll('.prsa-only').forEach(function(el) { el.style.display = p === 'prsa' ? '' : 'none'; });
   document.querySelectorAll('.arf-only').forEach(function(el) { el.style.display = p === 'arf' ? '' : 'none'; });
   document.querySelectorAll('.ib-only').forEach(function(el) { el.style.display = p === 'ib' ? '' : 'none'; });
+  renderClientType();
   renderSriCards();
   onClientChange();
+}
+// Customer type (Investment Bond): a company name for a corporate client; one or two people otherwise
+function renderClientType() {
+  var ib = S.product === 'ib', corp = clientIsCorp(), joint = clientIsJoint();
+  $('c-type-wrap').hidden = !ib;
+  document.querySelectorAll('#c-type-seg [data-v]').forEach(function(b) {
+    var on = b.getAttribute('data-v') === (corp ? 'corporate' : 'individual');
+    b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+  $('c-corp').hidden = !corp;
+  $('c-person').hidden = corp;
+  $('c-joint-wrap').hidden = !ib || corp;
+  $('c-joint').checked = !!S.client.joint;
+  $('c-person2').hidden = !joint;
+  $('c-person-h').hidden = !joint;
+}
+function setClientType(t) {
+  if (S.client.type === t) return;
+  S.client.type = t;
+  if (t !== 'corporate') S.ib.taxExempt = false;
+  ['c-company', 'c-first', 'c-last', 'c-dob', 'c-first2', 'c-last2', 'c-dob2'].forEach(function(id) { $(id).classList.remove('invalid'); });
+  setFootMsg('');
+  renderClientType();
+  onClientChange();
+  renderStepNav();
+}
+function setJoint(on) {
+  S.client.joint = !!on;
+  ['c-first2', 'c-last2', 'c-dob2'].forEach(function(id) { $(id).classList.remove('invalid'); });
+  renderClientType();
+  onClientChange();
+  renderStepNav();
 }
 function stepNra(d) {
   var v = isNaN(S.prsa.nra) ? 65 : S.prsa.nra;
@@ -1899,12 +2000,12 @@ function stepNra(d) {
   onClientChange();
 }
 function onClientChange() {
-  var h = '', ageTxt = '';
-  if (S.client.dobStr && S.startStr) {
+  var h = '', ageTxt = '', age2Txt = '', joint = clientIsJoint();
+  if (clientDob() && S.startStr) {
     var age = ageBetween(S.client.dobStr, S.startStr);
     if (age > 0 && age < 120) {
       ageTxt = 'Age ' + Math.floor(age);
-      h = '<span>Age at start <b>' + Math.floor(age) + '</b></span>';
+      h = '<span>' + (joint ? 'First policyholder\'s age at start' : 'Age at start') + ' <b>' + Math.floor(age) + '</b></span>';
       if (S.product === 'prsa' && S.prsa.nra > age) {
         var t = prsaTerm(S.client.dobStr, S.startStr, S.prsa.nra), y = Math.floor(t.termMonths / 12), mo = t.termMonths % 12;
         h += '<span>Term <b>' + y + (y === 1 ? ' year' : ' years') + (mo ? ' ' + mo + (mo === 1 ? ' month' : ' months') : '') + '</b></span>' +
@@ -1912,8 +2013,13 @@ function onClientChange() {
       }
     }
   }
+  if (joint && S.client.dobStr2 && S.startStr) {
+    var a2 = ageBetween(S.client.dobStr2, S.startStr);
+    if (a2 > 0 && a2 < 120) { age2Txt = 'Age ' + Math.floor(a2); h += '<span>Second policyholder\'s age at start <b>' + Math.floor(a2) + '</b></span>'; }
+  }
   $('age-hint').innerHTML = h;
   $('dob-age').textContent = ageTxt;
+  $('dob-age2').textContent = age2Txt;
   if (rpUI) { rpUI.setContext(rpContext()); applyProfilerResult(); }   // age can raise the age flag (65 or over)
   if (S.maxStep > 2) invalidate(Math.min(S.maxStep, 4));
 }
@@ -1922,7 +2028,7 @@ function onClientChange() {
 // ── Risk profiler (reusable module: js/risk_profiler*.js) ──
 var rpUI = null;
 // The date of birth comes from Step 2; age is worked out at today's date. seen: see S.risk.pSeen.
-function rpContext() { return { dob: S.client.dobStr || null, atDate: todayStr(), seen: S.risk.pSeen }; }
+function rpContext() { return { dob: clientDob() || null, atDate: todayStr(), seen: S.risk.pSeen }; }
 function profilerResult() { return RiskProfiler.evaluate(S.risk.pAnswers, rpContext()); }
 // The applied result, or null if the profiler is not being used or has not been finished
 function profilerDone() {
@@ -1960,7 +2066,8 @@ var rpReturnFocus = null;
 function onProfilerChange(state) { S.risk.pAccepted = state.accepted; renderProfilerDialogNote(); }
 function renderProfilerDialogNote() {
   var r = rpUI.getState().result;
-  $('rpm-d').textContent = (S.client.first ? 'For ' + [S.client.first, S.client.last].filter(Boolean).join(' ') + ' · ' : '') +
+  var rpName = qtClientName(effClient(), false);
+  $('rpm-d').textContent = (rpName ? 'For ' + rpName + ' · ' : '') +
     (r.complete ? 'All questions answered' : r.answered + ' of ' + r.total + ' questions answered');
 }
 function openProfiler(part) {
@@ -2116,7 +2223,7 @@ function setEsg(v) {
 function renderPlan() {
   $('plan-lead').textContent = S.product === 'prsa' ? 'Choose the PRSA version and enter the contributions.'
     : S.product === 'arf' ? 'Choose the ARF version and enter the contribution and income.'
-    : 'Choose the Investment Bond version and enter the contributions and income.';
+    : 'Choose the Investment Bond version and enter the contributions and any regular withdrawals.';
   if (S.product === 'prsa') {
     document.querySelectorAll('#ptype-cards [data-v]').forEach(function(b) {
       var on = b.getAttribute('data-v') === S.prsa.prsaType;
@@ -2136,17 +2243,12 @@ function renderPlan() {
     $('a-iage').value = S.arf.incomeStartAge == null ? '' : S.arf.incomeStartAge;
     renderArfIncome();
   } else {
-    if (S.ib.incomeStartAge == null && S.client.dobStr && S.startStr) {
-      var age2 = ageBetween(S.client.dobStr, S.startStr);
-      S.ib.incomeStartAge = Math.max(IB_MIN_AGE, Math.ceil(age2));
-    }
-    renderIbPtypeSeg();
+    renderIbPtype();
     $('i-sp').value = S.ib.contribution ? fNum(S.ib.contribution) : '';
     $('i-rp').value = S.ib.rp ? fNum(S.ib.rp) : '';
     $('i-freq').value = S.ib.freq;
     $('i-esc').value = S.ib.esc;
     $('i-itype').value = S.ib.incomeType;
-    $('i-iage').value = S.ib.incomeStartAge == null ? '' : S.ib.incomeStartAge;
     renderIbIncome();
     renderIbContribHint();
   }
@@ -2177,6 +2279,10 @@ function setCode(product, code) {
   var o = S[product];
   if (o.code !== code) { o.spUpOverride = null; o.specialDeal = null; }
   o.code = code;
+  // IB versions K, L and M need regular contributions, which can't be combined with regular withdrawals
+  if (product === 'ib' && ibCodeAllowsRp(code) && o.incomeType !== 'none') {
+    o.incomeType = 'none'; o.incomeValue = 0; $('i-itype').value = 'none'; renderIbIncome(); invalidate(4);
+  }
   renderCodeSelects();
 }
 function codeTableFor(pr) { return pr === 'prsa' ? CODES : pr === 'arf' ? ARF_CODES : IB_CODES; }
@@ -2250,7 +2356,8 @@ function renderCodeInfo() {
     rows += commRow('Exit charges', sv.length ? 'On full encashment in the early years' : 'No exit charges on this version', '<span class="v">' + (sv.length ? sv.map(pct).join(' / ') : 'None') + '</span>');
   }
   $(pre + '-codeinfo').innerHTML = '<div class="comm"><button type="button" class="comm-h" aria-expanded="' + commOpen + '" aria-controls="' + pre + '-commbody" onclick="toggleComm()">' +
-    '<span class="ct"><b>Commission and charges · ' + escHtml(o.code) + '</b><span class="ov">' + overview + (edited ? ' · <span class="ovr">Edited</span>' : '') + '</span></span><span class="chev" aria-hidden="true">▾</span></button>' +
+    '<span class="ct"><b>Commission and charges · ' + escHtml(o.code) + '</b><span class="ov">' + overview + (edited ? ' · <span class="ovr">Edited</span>' : '') + '</span></span>' +
+    '<span class="comm-act">' + (commOpen ? 'Done' : 'Edit') + '<span class="chev" aria-hidden="true">▾</span></span></button>' +
     '<div class="comm-b" id="' + pre + '-commbody"' + (commOpen ? '' : ' hidden') + '>' + (pr === 'prsa' ? '' : '<div class="comm-note">Initial commission adjusts in steps of ' + pct(commStep()) + '.</div>') + rows + '</div></div>';
   renderPlanSummary();
 }
@@ -2337,7 +2444,8 @@ function renderPlanSummary() {
     if (ctHas(i.ctype, 'sp')) h += ln('Single', fEUR(isp));
     if (ctHas(i.ctype, 'rp')) h += ln('Regular', fEUR(irA) + ' a year');
     if (!i.ctype) h += '<div class="ln"><span>Choose the contribution types</span></div>';
-    h += '</div><hr>' + ln('Exit tax', pct(IB_TAX_RATES[i.policyholderType] || 0)) +
+    if (i.incomeType !== 'none') h += ln('Regular withdrawals', i.incomeType === 'custom_amount' ? fEUR(i.incomeValue) + ' a year' : (+i.incomeValue || 0) + '% a year');
+    h += '</div><hr>' + ln('Exit tax', pct(IB_TAX_RATES[ibPolicyholderType()] || 0)) +
       ln('Initial commission', r ? fEUR(r.initialComm) : '–');
   }
   $('plan-sum').innerHTML = h;
@@ -2365,7 +2473,7 @@ function setCtype(product, ct) {
     $(F[part][1]).classList.remove('invalid');
   });
   if (!ctHas(ct, 'rp')) { o.esc = 0; $(product === 'prsa' ? 'p-esc' : 'i-esc').value = 0; }
-  if (product === 'ib' && ctHas(ct, 'rp') && o.incomeType !== 'none') {
+  if (product === 'ib' && (ctHas(ct, 'rp') || ibCodeAllowsRp(o.code)) && o.incomeType !== 'none') {
     o.incomeType = 'none'; o.incomeValue = 0; $('i-itype').value = 'none'; renderIbIncome();
   }
   $(product === 'prsa' ? 'p-ctchips' : 'i-ctchips').classList.remove('invalid');
@@ -2377,17 +2485,23 @@ function setCtype(product, ct) {
 function renderContribFields(product) {
   var ct = S[product].ctype, pre = product === 'prsa' ? 'p' : 'i';
   var rpOk = product !== 'ib' || ibCodeAllowsRp(S.ib.code);   // IB regular contributions: versions K, L and M only
+  var spWithRp = product === 'ib' && rpOk;                        // ...where a single contribution only goes alongside them
   $(pre + '-ctchips').innerHTML = CT_PARTS[product].map(function(p) {
     var on = ctHas(ct, p[0]), dis = p[0] === 'rp' && !rpOk;
     return '<button type="button" class="ctchip' + (on ? ' on' : '') + '" data-part="' + p[0] + '" aria-pressed="' + on + '"' + (dis ? ' disabled' : '') +
-      ' onclick="toggleCtPart(\'' + product + '\', \'' + p[0] + '\')"><span class="ck" aria-hidden="true">✓</span>' + p[1] + (dis ? ' <small>(versions K, L, M only)</small>' : '') + '</button>';
+      ' onclick="toggleCtPart(\'' + product + '\', \'' + p[0] + '\')"><span class="ck" aria-hidden="true">✓</span>' + p[1] +
+      (dis ? ' <small>(versions K, L, M only)</small>' : p[0] === 'sp' && spWithRp ? ' <small>(with regular contributions)</small>' : '') + '</button>';
   }).join('');
   document.querySelectorAll('#' + pre + '-ctfields [data-ct]').forEach(function(el) { el.hidden = !ctHas(ct, el.getAttribute('data-ct')); });
   $(pre + '-ctfields').hidden = !ct;
   if (product !== 'ib') return;
-  var rp = ctHas(ct, 'rp');   // income can't be combined with regular contributions
-  $('i-itype').disabled = rp;
-  $('i-income-note').hidden = !rp;
+  $('i-sp-hint').textContent = 'Minimum ' + fEUR(ibMinSp(S.ib.code));
+  // Regular withdrawals can't be combined with regular contributions, which versions K, L and M require
+  var rp = ctHas(ct, 'rp'), noInc = rp || rpOk;
+  $('i-itype').disabled = noInc;
+  $('i-income-note').hidden = !noInc;
+  $('i-income-note').textContent = rp ? 'Regular withdrawals aren\'t available with regular contributions.'
+    : 'Regular withdrawals aren\'t available on versions K, L and M, which need regular contributions.';
 }
 function renderPrsaContribHint() {
   var p = S.prsa, h = [];
@@ -2402,29 +2516,31 @@ function renderArfIncome() {
   $('a-ival-lbl').textContent = t === 'custom_amount' ? 'Income per year (€)' : 'Income (% of fund per year)';
   $('a-ival').value = S.arf.incomeValue ? (t === 'custom_amount' ? fNum(S.arf.incomeValue) : S.arf.incomeValue) : '';
 }
-function renderIbPtypeSeg() {
-  $('i-ptype-seg').innerHTML = IB_POLICYHOLDER_TYPES.map(function(t) {
-    var on = S.ib.policyholderType === t.id;
-    return '<button type="button" role="radio" aria-checked="' + on + '" data-v="' + t.id + '" onclick="setIbPtype(\'' + t.id + '\')"' + (on ? ' class="on"' : '') + '>' + escHtml(t.label) + '</button>';
-  }).join('');
+// Policyholder type follows the customer type from Step 2; a corporate client can be marked tax exempt
+function renderIbPtype() {
+  var corp = clientIsCorp(), t = ibPolicyholderType();
+  $('i-ptype').innerHTML = '<div class="ptype-v"><b>' + (corp ? 'Corporate' : 'Individual') + (clientIsJoint() ? ' · two policyholders' : '') + '</b>' +
+    '<span>Exit tax ' + pct(IB_TAX_RATES[t] || 0) + '</span><button type="button" class="lnk" onclick="goStep(2)">Change customer type</button></div>' +
+    (corp ? '<label class="check" style="margin-top:14px"><input type="checkbox" id="i-exempt"' + (S.ib.taxExempt ? ' checked' : '') +
+      ' onchange="setIbExempt(this.checked)"><span>Tax exempt</span></label>' : '');
 }
-function setIbPtype(id) {
-  if (S.ib.policyholderType !== id) invalidate(4);
-  S.ib.policyholderType = id;
-  renderIbPtypeSeg(); renderPlanSummary();
+function setIbExempt(on) {
+  if (S.ib.taxExempt !== !!on) invalidate(4);
+  S.ib.taxExempt = !!on;
+  renderIbPtype(); renderPlanSummary();
 }
 function renderIbContribHint() {
   var i = S.ib, h = [];
   if (ctHas(i.ctype, 'rp') && !ibCodeAllowsRp(i.code)) h.push('The selected version does not support regular contributions — choose a K, L or M version.');
-  if (i.rp > 0 && i.incomeType !== 'none') h.push('Regular contributions and income cannot both be selected.');
+  if (i.ctype && !ctHas(i.ctype, 'rp') && ibCodeAllowsRp(i.code)) h.push('On versions K, L and M a single contribution can only be paid alongside regular contributions. Select regular contributions as well.');
+  if (i.rp > 0 && i.incomeType !== 'none') h.push('Regular contributions and regular withdrawals cannot both be selected.');
   $('i-rp-warn').innerHTML = h.length ? '<div class="alert warn" style="margin-top:16px">' + h.map(escHtml).join(' ') + '</div>' : '';
 }
 function renderIbIncome() {
   var t = S.ib.incomeType;
   $('i-ival-wrap').style.display = t === 'none' ? 'none' : '';
   $('i-iesc-wrap').style.display = t === 'custom_amount' ? '' : 'none';
-  $('i-iage-wrap').style.display = t === 'none' ? 'none' : '';
-  $('i-ival-lbl').textContent = t === 'custom_amount' ? 'Income per year (€)' : 'Income (% of fund per year)';
+  $('i-ival-lbl').textContent = t === 'custom_amount' ? 'Regular withdrawals per year (€)' : 'Regular withdrawals (% of fund per year)';
   $('i-ival').value = S.ib.incomeValue ? (t === 'custom_amount' ? fNum(S.ib.incomeValue) : S.ib.incomeValue) : '';
   renderIbContribHint();
 }
@@ -2447,19 +2563,17 @@ function planErrors(bad) {
       e.push('Income start age must be between ' + Math.floor(age) + ' and 84.'); bad.push('a-iage');
     }
   } else {
-    var i = S.ib, age2 = ageBetween(S.client.dobStr, S.startStr);
+    var i = S.ib, minSp = ibMinSp(i.code);
     if (!i.ctype) { e.push('Choose the contribution type.'); bad.push('i-ctchips'); return e; }
-    if (ctHas(i.ctype, 'sp') && !(i.contribution >= IB_MIN_SP)) { e.push('Minimum single contribution is ' + fEUR(IB_MIN_SP) + '.'); bad.push('i-sp'); }
+    if (ctHas(i.ctype, 'sp') && !(i.contribution >= minSp)) { e.push('Minimum single contribution is ' + fEUR(minSp) + '.'); bad.push('i-sp'); }
     if (ctHas(i.ctype, 'rp') && !(i.rp > 0)) { e.push('Enter the regular contribution.'); bad.push('i-rp'); }
     if (ctHas(i.ctype, 'rp') && !ibCodeAllowsRp(i.code)) { e.push('The selected version does not support regular contributions — choose a K, L or M version.'); bad.push('i-ctchips'); }
-    if (i.rp > 0 && i.incomeType !== 'none') { e.push('Regular contributions and income cannot both be selected.'); bad.push('i-rp'); }
+    if (!ctHas(i.ctype, 'rp') && ibCodeAllowsRp(i.code)) { e.push('On versions K, L and M a single contribution can only be paid alongside regular contributions.'); bad.push('i-ctchips'); }
+    if (i.rp > 0 && i.incomeType !== 'none') { e.push('Regular contributions and regular withdrawals cannot both be selected.'); bad.push('i-rp'); }
     if (ctHas(i.ctype, 'rp') && i.esc !== 0 && i.esc !== 5) { e.push('Yearly increase must be 0% or 5%.'); bad.push('i-esc'); }
-    if (i.incomeType === 'custom_amount' && !(i.incomeValue > 0)) { e.push('Enter an annual income amount greater than zero.'); bad.push('i-ival'); }
-    if (i.incomeType === 'custom_pct' && !(i.incomeValue > 0 && i.incomeValue <= 100)) { e.push('Enter an income percentage between 0 and 100.'); bad.push('i-ival'); }
-    if (i.incomeType === 'custom_amount' && (isNaN(i.incomeEscalationPct) || i.incomeEscalationPct < 0 || i.incomeEscalationPct > 10)) { e.push('Yearly income increase must be between 0% and 10%.'); bad.push('i-iesc'); }
-    if (i.incomeType !== 'none' && (i.incomeStartAge == null || isNaN(i.incomeStartAge) || i.incomeStartAge < Math.floor(age2) || i.incomeStartAge > (IB_MAX_AGE - 1))) {
-      e.push('Income start age must be between ' + Math.floor(age2) + ' and ' + (IB_MAX_AGE - 1) + '.'); bad.push('i-iage');
-    }
+    if (i.incomeType === 'custom_amount' && !(i.incomeValue > 0)) { e.push('Enter an annual withdrawal amount greater than zero.'); bad.push('i-ival'); }
+    if (i.incomeType === 'custom_pct' && !(i.incomeValue > 0 && i.incomeValue <= 100)) { e.push('Enter a withdrawal percentage between 0 and 100.'); bad.push('i-ival'); }
+    if (i.incomeType === 'custom_amount' && (isNaN(i.incomeEscalationPct) || i.incomeEscalationPct < 0 || i.incomeEscalationPct > 10)) { e.push('Yearly increase in regular withdrawals must be between 0% and 10%.'); bad.push('i-iesc'); }
   }
   return e;
 }
@@ -3195,10 +3309,10 @@ function engineInput() {
              specialDeal: a.specialDeal, spUpOverride: a.spUpOverride, rate1Override: a.rate1Override, rate2Override: a.rate2Override };
   }
   var i = S.ib;
-  return { dobStr: S.client.dobStr, startStr: S.startStr, code: i.code, policyholderType: i.policyholderType,
+  return { dobStr: clientDob(), dobStr2: clientIsJoint() ? S.client.dobStr2 : '', startStr: S.startStr, code: i.code, policyholderType: ibPolicyholderType(),
            contribution: i.contribution, rp: i.rp, freq: i.freq, esc: i.esc,
            diyAllocs: i.diyAllocs, diyGmab: i.diyGmab, incomeType: i.incomeType,
-           incomeValue: i.incomeType === 'none' ? 0 : i.incomeValue, incomeStartAge: i.incomeStartAge,
+           incomeValue: i.incomeType === 'none' ? 0 : i.incomeValue,
            incomeEscalationPct: i.incomeType === 'custom_amount' ? i.incomeEscalationPct : null,
            specialDeal: i.specialDeal, spUpOverride: i.spUpOverride, rateOverride: i.rateOverride };
 }
@@ -3281,10 +3395,11 @@ function sumCol(label, step, head, sub, rows) {
 // charges and remuneration are on their own tabs.
 function resSummary(r) {
   var isPrsa = S.product === 'prsa', isArf = S.product === 'arf';
-  var cName = [S.client.salutation, S.client.first, S.client.last].join(' ');
-  var ageStart = r.ageAtStart != null ? r.ageAtStart : r.startAge;
+  var ec = effClient(), cName = qtClientName(ec, true);
   var risk = S.risk.sri ? S.risk.sri + ' · ' + ESMA_LABELS[S.risk.sri] : '—';
-  var client = sumCol('Client', 2, escHtml(cName), 'Born ' + escHtml(fmtDate(S.client.dobStr)) + ' · age ' + Math.floor(ageStart),
+  var cSub = qtIsCorp(ec) ? escHtml(ibPolicyholderInfo(r.policyholderType).label) + ' policyholder'
+    : qtClientDobs(ec).map(function(d) { return 'Born ' + escHtml(fmtDate(d)) + ' · age ' + Math.floor(ageBetween(d, r.inputs.startStr)); }).join('<br>');
+  var client = sumCol('Client', 2, escHtml(cName), cSub,
     S.lite ? [] : [['Attitude to risk', escHtml(risk)]]);
 
   // Product and investment in one column: what it is, when it starts and the money going in
@@ -3305,7 +3420,8 @@ function resSummary(r) {
   } else {
     planRows = [
       ['Start date', escHtml(fmtDate(r.inputs.startStr))],
-      ['Total paid in', fEUR(r.totalContrib != null ? r.totalContrib : r.contribution)]
+      ['Total paid in', fEUR(r.totalContrib != null ? r.totalContrib : r.contribution)],
+      r.inputs.incomeType !== 'none' ? ['Regular withdrawals', escHtml(qtIbIncomeShort(r))] : null
     ];
   }
   var plan = sumCol('Plan', 4, escHtml(QT_TEXT.productBrands[S.product] || productName()), escHtml(ctype), planRows);
@@ -3414,17 +3530,17 @@ function setIbRate(v) {
   compute(); renderResults();
 }
 function resIbProjection(r) {
-  var p = r.p, inp = engineInput();
+  var p = r.p, inp = engineInput(), hasAge = r.startAge != null;   // no ages for a corporate policyholder
   var rates = '<div class="card side rates"><h3 class="card-t" style="margin-bottom:14px">Growth rate</h3>' +
     rateInput('i-rate', 'Growth rate (a year)', r.rate, ibDefaultRate(inp), r.rateOverridden, IB_MAX_RATE, 'setIbRate(this.value)') +
     '<p class="hint" style="margin:0">Defaults to the portfolio\'s blended growth rate, capped at ' + pct(IB_MAX_RATE) + '.</p></div>';
   var chart = '<div class="card"><div class="cc-h"><h3 class="card-t">How the fund could grow</h3>' + legendHtml([['', 'At ' + pct(r.rate) + ' growth']]) + '</div>' +
-    qtIbChart(r, 660, 300, { legend: false }) + '<p class="foot-note">Fund value after charges, income and exit tax.</p>' +
+    qtIbChart(r, 660, 300, { legend: false }) + '<p class="foot-note">Fund value after charges, regular withdrawals and exit tax.</p>' +
     '<div class="wbox">' + escHtml(QT_TEXT.packWarnings.estimates) + '</div></div>';
   return '<div class="cols">' + chart + '<div class="stack">' + rates + '</div></div>' +
     '<div class="card flush"><div class="tcard-h"><h3 class="card-t">Projected values</h3></div>' +
-    projTable(['Year', 'Age', 'A. Contributions', 'B. Growth to date', 'C. Charges to date', 'D. Tax to date', 'E. Income to date (after tax)', 'F. Projected value'],
-      p.rows.map(function(rw) { return { tot: p.fundZeroYear === rw.year, c: [rw.year, rw.age, fEUR(rw.A), fEUR(rw.B), fEUR(rw.C), fEUR(rw.D), fEUR(rw.E), fEUR(rw.F)] }; })) + '</div>';
+    projTable((hasAge ? ['Year', 'Age'] : ['Year']).concat(['A. Contributions', 'B. Growth to date', 'C. Charges to date', 'D. Tax to date', 'E. Regular withdrawals to date (after tax)', 'F. Projected value']),
+      p.rows.map(function(rw) { return { tot: p.fundZeroYear === rw.year, c: (hasAge ? [rw.year, rw.age] : [rw.year]).concat([fEUR(rw.A), fEUR(rw.B), fEUR(rw.C), fEUR(rw.D), fEUR(rw.E), fEUR(rw.F)]) }; })) + '</div>';
 }
 function stat3(k, v, s) { return '<div><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (s ? '<div class="s">' + s + '</div>' : '') + '</div>'; }
 function resCharges(r) {
@@ -3647,7 +3763,7 @@ function textContext() {
   else if (S.risk.esg !== true) esg = '';
   else esg = (esgLead || T.sosEsgYes) + ' ' + T.sosEsgPrompt;
   var ctx = {
-    salutation: S.client.salutation, clientLast: S.client.last, productName: productName(),
+    salutation: S.client.salutation, clientLast: S.client.last, dearName: qtClientDear(effClient()), productName: productName(),
     openingLine: T.coverOpening[S.product], enclosedList: enclosedList,
     sosSentence: S.sections.sos ? T.coverSosSentence : '', brokerPhone: S.broker.phone, brokerEmail: S.broker.email,
     clientSri: S.risk.sri, clientSriLabel: ESMA_LABELS[S.risk.sri],
@@ -3668,7 +3784,7 @@ function textContext() {
     var parts = [];
     if (r.ofvRaw > 0) parts.push('a transfer value of ' + fEUR(r.ofvRaw));
     if (r.spRaw > 0) parts.push('a single contribution of ' + fEUR(r.spRaw));
-    if (r.rpRaw > 0) parts.push('regular contributions of ' + fEUR(r.rpRaw) + ' ' + (r.freq === 'annual' ? 'a year' : r.freq === 'quarterly' ? 'a quarter' : 'a month') + (r.esc > 0 ? ' increasing by ' + r.esc + '% a year' : ''));
+    if (r.rpRaw > 0) parts.push('regular contributions of ' + fEUR(r.rpRaw) + ' ' + freqPer(r.freq) + (r.esc > 0 ? ' increasing by ' + r.esc + '% a year' : ''));
     ctx.contributionSummary = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0];
     ctx.nra = r.nra;
     ctx.riy = pct(Math.max(0, r.grossRate - r.netRate));
@@ -3679,10 +3795,10 @@ function textContext() {
   } else {
     var ibParts = [];
     if (r.contribution > 0) ibParts.push('a single contribution of ' + fEUR(r.contribution));
-    if (r.rp > 0) ibParts.push('regular contributions of ' + fEUR(r.rp) + ' ' + (r.inputs.freq === 'annual' ? 'a year' : r.inputs.freq === 'quarterly' ? 'a quarter' : 'a month'));
+    if (r.rp > 0) ibParts.push('regular contributions of ' + fEUR(r.rp) + ' ' + freqPer(r.inputs.freq));
     ctx.contributionSummary = ibParts.length > 1 ? ibParts.join(' and ') : ibParts[0];
     ctx.contribution = fEUR(r.contribution);
-    ctx.policyholderType = r.policyholderType; ctx.exitTaxRate = pct(r.taxRate);
+    ctx.policyholderType = ibPolicyholderInfo(r.policyholderType).phrase.replace(/^an? /, ''); ctx.exitTaxRate = pct(r.taxRate);
     ctx.rate = pct(r.rate); ctx.netRate = pct(r.p.netRate);
   }
   return ctx;
@@ -4115,7 +4231,7 @@ function edCmd(k, cmd) {
 
 // ── Review & generate ──
 function packFileName() {
-  var sur = String(S.client.last || 'Client').trim().replace(/[^A-Za-z0-9'-]+/g, '-').replace(/^-+|-+$/g, '') || 'Client';
+  var sur = String((clientIsCorp() ? S.client.company : S.client.last) || 'Client').trim().replace(/[^A-Za-z0-9'-]+/g, '-').replace(/^-+|-+$/g, '') || 'Client';
   return 'Quotation_' + sur + '_' + todayStr() + '.pdf';
 }
 function reviewChecks() {
@@ -4213,7 +4329,7 @@ function profilePackData() {
 function packData(noAutoPrint) {
   return {
     // Lite mode: the pack carries no adviser details, even if some were entered before lite was switched on
-    product: S.product, r: S.result, broker: S.lite ? { firm:'', name:'', title:'', email:'', phone:'', address:'', regStatement:'', logo:'' } : S.broker, client: S.client, risk: S.risk, lite: S.lite,
+    product: S.product, r: S.result, broker: S.lite ? { firm:'', name:'', title:'', email:'', phone:'', address:'', regStatement:'', logo:'' } : S.broker, client: effClient(), risk: S.risk, lite: S.lite,
     productName: productName(), strategyName: strategyName(),
     sections: packSectionFlags(), profile: profilePackData(), coverText: docText('cover'), sosText: docText('sos'), noAutoPrint: !!noAutoPrint,
     docTitle: packFileName().replace(/\.pdf$/, '')

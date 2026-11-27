@@ -81,20 +81,22 @@ var QT_TEXT = {
   arfSurrenderNote: 'The charges shown in column C for the early years assume that the policy is fully encashed and an exit charge is incurred. No exit charge applies to partial withdrawals or regular income. If the policy is not fully encashed during the exit charge period, no exit charge is payable and the charges actually deducted are lower than shown.',
 
   // ─── Investment Bond projection — DRAFT ──────────────────────────────────────
-  ibProjectionIntro: 'The table below shows how your Investment Bond could perform at the assumed rate of investment growth, allowing for the income you take, all charges and tax. Column F shows the projected value of your policy.',
+  ibProjectionIntro: 'The table below shows how your Investment Bond could perform at the assumed rate of investment growth, allowing for any regular withdrawals you take, all charges and tax. Column F shows the projected value of your policy.',
   ibImportant: 'THESE ILLUSTRATIONS ASSUME A RETURN OF {rate} PER ANNUM. THIS RATE IS FOR ILLUSTRATION PURPOSES ONLY AND IS NOT GUARANTEED. ACTUAL INVESTMENT GROWTH WILL DEPEND ON THE PERFORMANCE OF THE UNDERLYING INVESTMENTS AND MAY BE MORE OR LESS THAN ILLUSTRATED.',
   ibRiy: 'The deductions for charges shown in column C have the same effect as reducing the assumed investment growth from {rate} to {netRate}. Column D shows the exit tax that would be due if the policy were fully encashed at that point; no tax is actually deducted unless a chargeable event occurs.',
-  ibIncomeNone: 'You have not chosen to take an income from this policy, so it is left to grow.',
-  ibIncomeAmount: 'You have chosen an initial income of {income} per annum, escalating at {esc} per annum.',
-  ibIncomePct: 'You have chosen an initial income of {incomePct} of the fund per annum ({income}).',
-  ibDeferNote: 'Income is deferred until age {incomeAge}.',
+  // Investment Bond regular withdrawals. They always start with the policy (no deferred start).
+  ibIncomeNone: 'You have not chosen to take regular withdrawals from this policy, so it is left to grow.',
+  ibIncomeAmount: 'You have chosen initial regular withdrawals of {income} per annum, escalating at {esc} per annum.',
+  ibIncomePct: 'You have chosen regular withdrawals of {incomePct} of the fund per annum ({income}).',
   // ARF and Investment Bond projection pages: the calendar month income is assumed to start (asterisked footnote)
   incomeStartNoteAge: '* Income is assumed to start in {when} (month {month} of the policy), the policy month nearest the date you reach age {age}, and to be paid monthly from then.',
   incomeStartNote: '* Income is assumed to start in {when} (month {month} of the policy) and to be paid monthly from then.',
+  ibWithdrawalStartNote: '* Regular withdrawals are assumed to start in {when} (month {month} of the policy) and to be paid monthly from then.',
   ibDepletes: 'At {rate} growth, your fund is projected to run out in year {year} (around age {age}), at which point your policy will end.',
+  ibDepletesNoAge: 'At {rate} growth, your fund is projected to run out in year {year}, at which point your policy will end.',
   ibLasts: 'At {rate} growth, your fund is not projected to run out within {years} years.',
-  ibTaxNote: 'This illustration assumes a {ptype} policyholder, with exit tax of {rate} applying to chargeable events, including the Revenue "deemed disposal" rule which taxes the gain on your policy every 8 years whether or not you make a withdrawal.',
-  ibDepletionWarning: 'Where amounts are withdrawn from your Investment Bond, its value will reduce and could run out, particularly if a high level of income is taken, investment returns are poor or you live a long time.',
+  ibTaxNote: 'This illustration assumes {ptype} policyholder, with exit tax of {rate} applying to chargeable events, including the Revenue "deemed disposal" rule which taxes the gain on your policy every 8 years whether or not you make a withdrawal.',
+  ibDepletionWarning: 'Where amounts are withdrawn from your Investment Bond, its value will reduce and could run out, particularly if high regular withdrawals are taken or investment returns are poor.',
   ibSurrenderNote: 'The charges shown in column C for the early years assume that the policy is fully encashed and an exit charge is incurred. No exit charge applies to the regular, scheduled withdrawals described in this quotation. If the policy is not fully encashed during the exit charge period, no exit charge is payable and the charges actually deducted are lower than shown.',
 
   // ─── Charges ─────────────────────────────────────────────────────────────────
@@ -112,7 +114,7 @@ var QT_TEXT = {
   ibGovtLevyNote: 'A government levy of {levy} applies to every contribution you make, including the single contribution and any regular contributions. This is a tax collected by Allianz Global Life on behalf of the State and is deducted at the time each contribution is invested.',
   ibExitCharges: 'An exit charge applies if you fully encash your Investment Bond in the early years, as shown below. No exit charge applies to the regular, scheduled withdrawals described in this quotation.',
   ibNoExitCharges: 'No exit charges apply to your Investment Bond.',
-  ibExitTaxNote: 'Exit tax of {rate} applies to this policy, based on a {ptype} policyholder. Tax is due on a chargeable event, including full or partial encashment and the Revenue "deemed disposal" rule, which taxes the gain on your policy every 8 years whether or not you make a withdrawal.',
+  ibExitTaxNote: 'Exit tax of {rate} applies to this policy, based on {ptype} policyholder. Tax is due on a chargeable event, including full or partial encashment and the Revenue "deemed disposal" rule, which taxes the gain on your policy every 8 years whether or not you make a withdrawal.',
   ibRiyCharges: 'At {rate} growth, the total effect of charges is equivalent to reducing the assumed growth rate to {netRate} per annum. This is separate from the effect of exit tax, which is set out above.',
   // Why the Reduction in Yield (effect of charges) differs from the total annual charge
   riyWhy: 'The Reduction in Yield is higher than the annual charge because it accounts for all fees combined and their compounding effect on your fund over time.',
@@ -176,7 +178,7 @@ var QT_TEXT = {
   // ─── Important information (the CPC warnings are in packWarnings below) ──────
   importantInfo: [
     'This quotation is based on the details provided by your adviser and the assumptions set out in this document. It does not form part of your contract. The terms and conditions of your policy will be set out in your policy documents.',
-    'The figures in this quotation are illustrations only and are not guaranteed. The actual value of your policy will depend on the performance of the underlying funds, the contributions paid, the income taken and the charges applied.',
+    'The figures in this quotation are illustrations only and are not guaranteed. The actual value of your policy will depend on the performance of the underlying funds, the contributions paid, {incomeTaken} and the charges applied.',
     'You will receive the regulatory disclosure documents required for this product (including a {regDoc}) before or when your policy starts. If there is any difference between this quotation and those documents, the regulatory documents apply.',
     'It is recommended that you seek independent financial advice before making any decision about your retirement savings.'
   ],
@@ -317,8 +319,9 @@ var QT_TEXT = {
 
   // ─── Cover letter template (adviser-editable in Step 7) — DRAFT ──────────────
   // {enclosedList} is built from the sections ticked in Step 7, one "- " bullet per line.
+  // {dearName}: 'Mr Murphy', 'Mr Murphy and Ms Byrne' (joint policyholders) or 'Sir or Madam' (corporate).
   coverLetter: [
-    'Dear {salutation} {clientLast},',
+    'Dear {dearName},',
     '',
     '{openingLine} Following our recent conversation, I enclose your personal quotation for the {productName}. {sosSentence}',
     '',

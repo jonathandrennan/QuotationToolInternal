@@ -26,6 +26,47 @@ function ageBetween(dobStr, atStr) {
   return (new Date(atStr) - new Date(dobStr)) / (365.25 * 24 * 3600 * 1000);
 }
 
+// ─── Regular contribution frequency ('monthly' | 'quarterly' | 'halfyearly' | 'annual') ───
+var FREQS = [
+  { id: 'monthly',    label: 'Monthly',     per: 'a month',         perYear: 12, short: '/m' },
+  { id: 'quarterly',  label: 'Quarterly',   per: 'a quarter',       perYear: 4,  short: '/q' },
+  { id: 'halfyearly', label: 'Half-yearly', per: 'every six months', perYear: 2, short: '/6m' },
+  { id: 'annual',     label: 'Annual',      per: 'a year',          perYear: 1,  short: '/yr' }
+];
+function freqInfo(f) { return FREQS.filter(function(x) { return x.id === f; })[0] || FREQS[0]; }
+function freqPer(f) { return freqInfo(f).per; }
+
+// ─── Client names ─────────────────────────────────────────────────────────────
+// c is the client as the tool hands it over: { type: 'individual' | 'corporate', joint, company, salutation,
+// first, last, dobStr, salutation2, first2, last2, dobStr2, address }. A corporate client or a second
+// policyholder is only possible on the Investment Bond; for other products the tool passes type 'individual'
+// and joint false.
+function qtIsCorp(c) { return !!c && c.type === 'corporate'; }
+function qtIsJoint(c) { return !!c && !qtIsCorp(c) && !!c.joint; }
+// Each policyholder's name, with or without the title. A corporate client is its company name.
+function qtClientNames(c, withTitle) {
+  if (qtIsCorp(c)) return [String(c.company || '').trim()];
+  function one(sal, first, last) {
+    return [withTitle ? sal : '', first, last].map(function(x) { return String(x || '').trim(); }).filter(Boolean).join(' ');
+  }
+  var out = [one(c.salutation, c.first, c.last)];
+  if (qtIsJoint(c)) out.push(one(c.salutation2, c.first2, c.last2));
+  return out;
+}
+function qtClientName(c, withTitle) { return qtClientNames(c, withTitle).join(' and '); }
+// Letter greeting after "Dear"
+function qtClientDear(c) {
+  if (qtIsCorp(c)) return 'Sir or Madam';
+  var out = [[c.salutation, c.last].join(' ').trim()];
+  if (qtIsJoint(c)) out.push([c.salutation2, c.last2].join(' ').trim());
+  return out.join(' and ');
+}
+// Dates of birth of the policyholders who have one ([] for a corporate client)
+function qtClientDobs(c) {
+  if (qtIsCorp(c)) return [];
+  return (qtIsJoint(c) ? [c.dobStr, c.dobStr2] : [c.dobStr]).filter(Boolean);
+}
+
 // ─── SRI display (ESMA / PRIIPs ESMA risk rating 1–7) ───────────────────
 var ESMA_COLORS = ['', '#1a9e5c', '#4ab566', '#a0c840', '#f5c400', '#f5820a', '#e03333', '#990000'];
 var ESMA_LABELS = ['', 'Very Low', 'Low', 'Low to Medium', 'Medium', 'Medium to High', 'High', 'Very High'];

@@ -17,15 +17,16 @@
 // Load after ib_data.js, arf_data.js, quote_common.js and engine_arf.js.
 
 // inp = {
-//   dobStr, startStr        'YYYY-MM-DD'
+//   dobStr, startStr        'YYYY-MM-DD'; dobStr is '' for a corporate policyholder (no ages are shown)
+//   dobStr2                 second policyholder's date of birth, or '' (individuals only)
 //   code                    key in IB_CODES
 //   policyholderType        'individual' | 'corporate' | 'exempt'
-//   contribution            single contribution (0, or >= IB_MIN_SP)
-//   rp, freq, esc           regular contribution per payment, 'monthly'|'quarterly'|'annual', escalation % pa
+//   contribution            single contribution (0, or >= ibMinSp(code))
+//   rp, freq, esc           regular contribution per payment, 'monthly'|'quarterly'|'halfyearly'|'annual', escalation % pa
 //   diyAllocs, diyGmab      { fundId: percent }, { fundId: bool }
-//   incomeType              'none' | 'custom_amount' | 'custom_pct'
+//   incomeType              regular withdrawals: 'none' | 'custom_amount' | 'custom_pct'. They always start with the
+//                           policy (there is no deferred start)
 //   incomeValue             € p.a. (custom_amount) or % of fund p.a. (custom_pct)
-//   incomeStartAge          integer age
 //   incomeEscalationPct     percent p.a. (custom_amount only)
 //   specialDeal             null or decimal: company-funded uplift on the standard initial commission
 //   spUpOverride            null or decimal
@@ -81,8 +82,8 @@ function ibRunProjection(inp, annualGrossRate) {
   var totalMonthlyCharge = adminM + extM + gteeM;
   var monthlyGrowRate = Math.pow(1 + annualGrossRate, 1 / 12) - 1;
 
-  var dob = new Date(inp.dobStr), startDate = new Date(inp.startStr);
-  var startAge = (startDate - dob) / (365.25 * 24 * 3600 * 1000);
+  // Age of the (first) policyholder at the start; null for a corporate policyholder
+  var startAge = inp.dobStr ? (new Date(inp.startStr) - new Date(inp.dobStr)) / (365.25 * 24 * 3600 * 1000) : null;
   var contrib = inp.contribution || 0;
   var rpAmt = rpAllowed ? inp.rp : 0;
   var esc = (inp.esc || 0) / 100;
@@ -95,7 +96,7 @@ function ibRunProjection(inp, annualGrossRate) {
     var escFactor = 1;
     for (var m = 1; m <= MAX_MONTHS; m++) {
       if (m % 12 === 1 && m > 1) escFactor *= (1 + esc);
-      var due = inp.freq === 'monthly' ? true : inp.freq === 'quarterly' ? (m % 3 === 1) : (m % 12 === 1);
+      var due = inp.freq === 'monthly' ? true : inp.freq === 'quarterly' ? (m % 3 === 1) : inp.freq === 'halfyearly' ? (m % 6 === 1) : (m % 12 === 1);
       rpSchedule.push(due ? rpAmt * escFactor : 0);
     }
   } else {
@@ -105,8 +106,7 @@ function ibRunProjection(inp, annualGrossRate) {
   var rpInitialComm = rpAllowed ? cc.rpUp * firstYearRpTotal : 0;
 
   var incomeType = inp.incomeType || 'none';
-  var incomeStartMonth = (incomeType !== 'none' && inp.incomeStartAge != null)
-    ? Math.max(1, Math.round((inp.incomeStartAge - startAge) * 12) + 1) : null;
+  var incomeStartMonth = incomeType !== 'none' ? 1 : null;   // regular withdrawals start with the policy
   var fixedAnnual = incomeType === 'custom_amount' ? (inp.incomeValue || 0) : 0;
   var pctAnnual = incomeType === 'custom_pct' ? (inp.incomeValue || 0) / 100 : 0;
   var incEsc = incomeType === 'custom_amount' ? Math.max(0, (inp.incomeEscalationPct || 0) / 100) : 0;
@@ -123,7 +123,6 @@ function ibRunProjection(inp, annualGrossRate) {
 
   for (var month = 1; month <= MAX_MONTHS; month++) {
     var yr = Math.ceil(month / 12);
-    var ageNow = startAge + month / 12;
 
     var premiumSP = (month === 1) ? contrib : 0;
     var premiumRP = rpSchedule[month - 1] || 0;
@@ -228,7 +227,7 @@ function ibRunProjection(inp, annualGrossRate) {
       var isDepletionRow = fundZeroYear === yr;
       if (!alreadyDepleted && (ARF_MILESTONES[yr] || isDepletionRow)) {
         rows.push({
-          year: yr, age: Math.floor(startAge + yr + 1e-9),
+          year: yr, age: startAge == null ? null : Math.floor(startAge + yr + 1e-9),
           A: Math.round(cumPremium), B: Math.round(cumGrowth), C: Math.round(chargesToDate),
           D: Math.round(taxToDate), E: Math.round(cumNetIncome), F: Math.round(displayFund)
         });
@@ -271,7 +270,7 @@ function ibRunProjection(inp, annualGrossRate) {
   return {
     rows: rows, commRows: commRows, yearly: yearly, fundByYear: fundByYear,
     fundZeroYear: fundZeroYear, fundZeroMonth: fundZeroMonth,
-    depletionAge: fundZeroMonth != null ? Math.floor(startAge + fundZeroMonth / 12) : null,
+    depletionAge: fundZeroMonth != null && startAge != null ? Math.floor(startAge + fundZeroMonth / 12) : null,
     effectiveGross: annualGrossRate, netRate: irrChargeA, riy: irrNoChargeA - irrChargeA,
     chargeRate: cc.admin + bm.ext + bm.gtee,
     spUpRate: spUpRate, spUpOverridden: inp.spUpOverride != null,
@@ -287,26 +286,24 @@ function ibRunProjection(inp, annualGrossRate) {
 }
 
 function ibValidate(inp) {
-  var errs = [];
-  if (!inp.dobStr) errs.push('Date of birth is required.');
+  var errs = [], person = inp.policyholderType === 'individual';
+  if (person && !inp.dobStr) errs.push('Date of birth is required.');
   if (!inp.startStr) errs.push('Policy start date is required.');
-  if (inp.dobStr && inp.startStr) {
-    var age = ageBetween(inp.dobStr, inp.startStr);
-    if (age < IB_MIN_AGE || age >= IB_MAX_AGE) errs.push('Age at policy start must be between ' + IB_MIN_AGE + ' and ' + (IB_MAX_AGE - 1) + '.');
+  if (person && inp.startStr) {
+    [inp.dobStr, inp.dobStr2].forEach(function(d) {
+      if (!d) return;
+      var age = ageBetween(d, inp.startStr);
+      if (age < IB_MIN_AGE || age >= IB_MAX_AGE) errs.push('Age at policy start must be between ' + IB_MIN_AGE + ' and ' + (IB_MAX_AGE - 1) + '.');
+    });
   }
-  var sp = inp.contribution || 0, rp = inp.rp || 0;
+  var sp = inp.contribution || 0, rp = inp.rp || 0, minSp = ibMinSp(inp.code);
   if (sp <= 0 && rp <= 0) errs.push('Enter a single contribution, a regular contribution, or both.');
-  if (sp > 0 && sp < IB_MIN_SP) errs.push('Minimum single contribution is ' + fEUR(IB_MIN_SP) + '.');
+  if (sp > 0 && sp < minSp) errs.push('Minimum single contribution is ' + fEUR(minSp) + '.');
   if (rp > 0 && !ibCodeAllowsRp(inp.code)) errs.push('The selected version does not support regular contributions — choose a K, L or M version.');
-  if (rp > 0 && inp.incomeType !== 'none') errs.push('Regular contributions and income cannot both be selected — the product assumes a client taking income is not also contributing.');
-  if (inp.incomeType === 'custom_amount' && !(inp.incomeValue > 0)) errs.push('Enter an annual income amount greater than zero.');
-  if (inp.incomeType === 'custom_pct' && !(inp.incomeValue > 0 && inp.incomeValue <= 100)) errs.push('Enter an income percentage between 0 and 100.');
-  if (inp.incomeType !== 'none') {
-    var age2 = inp.dobStr && inp.startStr ? ageBetween(inp.dobStr, inp.startStr) : 0;
-    if (inp.incomeStartAge == null || isNaN(inp.incomeStartAge) || inp.incomeStartAge < Math.floor(age2) || inp.incomeStartAge > (IB_MAX_AGE - 1)) {
-      errs.push('Income start age must be between ' + Math.floor(age2) + ' and ' + (IB_MAX_AGE - 1) + '.');
-    }
-  }
+  if (rp <= 0 && ibCodeAllowsRp(inp.code)) errs.push('Versions K, L and M need regular contributions. A single contribution can only be added alongside them.');
+  if (rp > 0 && inp.incomeType !== 'none') errs.push('Regular contributions and regular withdrawals cannot both be selected — the product assumes a client taking withdrawals is not also contributing.');
+  if (inp.incomeType === 'custom_amount' && !(inp.incomeValue > 0)) errs.push('Enter an annual withdrawal amount greater than zero.');
+  if (inp.incomeType === 'custom_pct' && !(inp.incomeValue > 0 && inp.incomeValue <= 100)) errs.push('Enter a withdrawal percentage between 0 and 100.');
   var total = 0;
   Object.keys(inp.diyAllocs || {}).forEach(function(id) { total += inp.diyAllocs[id] || 0; });
   if (Math.abs(total - 100) > 0.05) errs.push('Fund allocations must total 100%.');
